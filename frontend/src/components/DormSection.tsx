@@ -148,8 +148,8 @@ function DormDetailView({ detail }: { detail: DormDetail }) {
 
                 {detail.floors.length > 0 && <section aria-label="Reports by floor" className="space-y-2">
                     <h3 className="text-sm font-medium">Reports by floor</h3>
-                    <ChartContainer config={floorChart} className="h-44 w-full" style={{ aspectRatio: "auto" }}>
-                        <BarChart data={detail.floors} margin={{ left: 0, right: 8 }}>
+                    <ChartContainer config={floorChart} className="h-52 w-full" style={{ aspectRatio: "auto" }}>
+                        <BarChart data={detail.floors} margin={{ left: 0, right: 8, bottom: 12 }}>
                             <CartesianGrid vertical={false} />
                             <XAxis dataKey="floor" tickLine={false} axisLine={false} label={{ value: "Floor", position: "insideBottom", offset: -2 }} height={40} />
                             <YAxis allowDecimals={false} width={28} tickLine={false} axisLine={false} />
