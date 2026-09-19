@@ -1,6 +1,7 @@
 from flask import Flask
 from flask_cors import CORS
 
+from app.routes.test_supabase import test_supabase_bp
 from app.config import Config
 from app.routes.health import health_bp
 from app.routes.reports import reports_bp
@@ -20,6 +21,11 @@ def create_app():
         health_bp,
         url_prefix="/api"
     )
+
+    app.register_blueprint(
+    test_supabase_bp,
+    url_prefix="/api/test"
+)
 
     app.register_blueprint(
         reports_bp,
