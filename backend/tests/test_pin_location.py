@@ -278,3 +278,7 @@ def test_geocoded_address_requires_valid_coordinates(monkeypatch, point):
         pytest.fail("Invalid geocoded coordinates reached the database")
     monkeypatch.setattr("app.routes.locations.get_supabase", unexpected)
     assert post("pin", {"address": STREET["formatted_address"]}).status_code == 502
+@pytest.fixture(autouse=True)
+def authenticated_route_tests(monkeypatch):
+    # These tests cover map/pin behavior; test_auth.py exercises the real auth guard.
+    monkeypatch.setattr("app.require_verified_user", lambda: None)

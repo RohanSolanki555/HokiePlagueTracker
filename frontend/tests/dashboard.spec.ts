@@ -1,3 +1,4 @@
+import { mockSignedIn } from "./auth-helper"
 import { expect, test } from "@playwright/test"
 import { mapData, mockData } from "./fixtures"
 

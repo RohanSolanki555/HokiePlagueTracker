@@ -1,5 +1,11 @@
 # HokiePlagueTracker
 
+## Login setup
+
+Follow [Supabase auth setup](supabase/AUTH_SETUP.md) before running the app.
+It includes the VT-only signup migration, Auth hook, redirect URLs, email delivery,
+and frontend public-key configuration. Dashboard and reporting now require login.
+
 Tracks illness reports around Virginia Tech in Blacksburg, Virginia. React + TypeScript + Vite render the dashboard; Flask reads locations and reports from Supabase.
 
 The dashboard starts at Virginia Tech (37.2296, -80.4139). Enter another latitude/longitude, choose a radius and report period, or pan the Google map and select **Search this area**. Pins show report counts. Selecting a pin or a location in the list shows its counts, average severity, and change from the previous period.

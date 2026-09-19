@@ -1,4 +1,5 @@
-from flask import Flask
+from flask import Flask, request
+from app.services.auth_service import require_verified_user
 from flask_cors import CORS
 
 from app.routes.test_supabase import test_supabase_bp
@@ -11,6 +12,11 @@ from app.routes.stats import stats_bp
 
 def create_app():
     app = Flask(__name__)
+
+    @app.before_request
+    def authenticate_api():
+        if request.method != "OPTIONS" and request.path.startswith("/api/") and request.path != "/api/health":
+            return require_verified_user()
 
     CORS(
         app,
