@@ -40,21 +40,26 @@ def read_pin_request():
     latitude = coordinate("latitude", 90)
     longitude = coordinate("longitude", 180)
     place_id = text("place_id", 300)
+    address = text("address", 500)
+    if "address" in data and not address:
+        raise ValueError("address must contain 1-500 characters")
+    if address and (latitude is not None or longitude is not None or place_id is not None):
+        raise ValueError("Provide an address on its own, without coordinates or a place_id")
     if (latitude is None) != (longitude is None):
         raise ValueError("latitude and longitude must be supplied together")
-    if latitude is None and place_id is None:
-        raise ValueError("Provide latitude and longitude, or a place_id")
+    if latitude is None and place_id is None and address is None:
+        raise ValueError("Provide an address, latitude and longitude, or a place_id")
     location_type = text("location_type", 50)
     if location_type is not None and location_type not in LOCATION_TYPES:
         raise ValueError(f"location_type must be one of: {', '.join(LOCATION_TYPES)}")
-    return latitude, longitude, place_id, text("name", 120), location_type
+    return latitude, longitude, place_id, text("name", 120), location_type, address
 
 
 def resolve_pin():
     """Returns (metadata, None) or (None, error response)."""
     try:
-        latitude, longitude, place_id, name, location_type = read_pin_request()
-        metadata = lookup_place(latitude, longitude, place_id)
+        latitude, longitude, place_id, name, location_type, address = read_pin_request()
+        metadata = lookup_place(latitude, longitude, place_id, address=address)
     except ValueError as error:
         return None, (jsonify({"error": str(error)}), 400)
     except PlaceNotFound as error:

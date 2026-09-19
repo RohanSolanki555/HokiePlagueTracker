@@ -36,7 +36,7 @@ export const api = {
         request<Report[]>("/reports"),
 
     createReport: (report: CreateReportRequest) =>
-        request<Report[]>("/reports", {
+        request<CreateReportResponse>("/reports", {
             method: "POST",
             body: JSON.stringify(report),
         }),
@@ -75,7 +75,6 @@ export interface CreateReportRequest {
     address: string
     illness: string
     flu_type?: "A" | "B"
-    location_id?: number | null
     severity: number
 }
 
@@ -85,6 +84,16 @@ export interface Location {
     location_type: string
     latitude: number | null
     longitude: number | null
+}
+
+export interface ReportLocation extends Location {
+    latitude: number
+    longitude: number
+}
+
+export interface CreateReportResponse {
+    report: Report
+    location: ReportLocation
 }
 
 export interface Summary {

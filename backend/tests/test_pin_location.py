@@ -136,11 +136,15 @@ def test_pin_saves_metadata_to_supabase(monkeypatch):
 
 def test_pinning_the_same_place_twice_returns_the_existing_row(monkeypatch):
     google_returns(monkeypatch, {"status": "OK", "results": [LIBRARY]})
-    database = FakeLocations([{"id": 7, "place_id": "ChIJ-library", "name": "Newman Library"}])
+    saved = {
+        "id": 7, "place_id": "ChIJ-library", "name": "Newman Library",
+        "latitude": 37.2284, "longitude": -80.4198,
+    }
+    database = FakeLocations([saved])
     monkeypatch.setattr("app.routes.locations.get_supabase", lambda: database)
     response = post("pin", {"latitude": 37.2284, "longitude": -80.4198})
     assert response.status_code == 200
-    assert response.json == {"location": {"id": 7, "place_id": "ChIJ-library", "name": "Newman Library"}, "created": False}
+    assert response.json == {"location": saved, "created": False}
     assert database.inserted == []
 
 
@@ -200,3 +204,77 @@ def test_database_failure_when_saving_returns_503(monkeypatch):
     response = post("pin", {"latitude": 1, "longitude": 1})
     assert response.status_code == 503
     assert "private" not in response.json["error"]
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_address_pin_geocodes_and_saves_or_reuses_location(monkeypatch, existing):
+    calls = google_returns(monkeypatch, {"status": "OK", "results": [STREET]}, place_name=None)
+    saved = {
+        "id": 7, "place_id": STREET["place_id"], "name": "225 Stanger St",
+        "latitude": 37.2301, "longitude": -80.4180,
+        "formatted_address": STREET["formatted_address"], "location_type": "Other",
+    }
+    database = FakeLocations([saved] if existing else [])
+    monkeypatch.setattr("app.routes.locations.get_supabase", lambda: database)
+    response = post("pin", {"address": " 225 Stanger St, Blacksburg, VA 24060 "})
+    assert response.status_code == (200 if existing else 201)
+    assert response.json["created"] is (not existing)
+    assert calls[0] == {"key": "test-key", "address": "225 Stanger St, Blacksburg, VA 24060"}
+    location = response.json["location"]
+    assert (location["latitude"], location["longitude"]) == (37.2301, -80.4180)
+    assert location["formatted_address"] == STREET["formatted_address"]
+    assert location["name"] == "225 Stanger St"
+    assert len(database.inserted) == (0 if existing else 1)
+
+
+def test_address_lookup_does_not_save_a_location(monkeypatch):
+    google_returns(monkeypatch, {"status": "OK", "results": [STREET]}, place_name=None)
+    def unexpected():
+        pytest.fail("A preview must not write to the database")
+    monkeypatch.setattr("app.routes.locations.get_supabase", unexpected)
+    response = post("lookup", {"address": STREET["formatted_address"]})
+    assert response.status_code == 200
+    assert response.json["latitude"] == STREET["geometry"]["location"]["lat"]
+
+
+@pytest.mark.parametrize("body", [
+    {"address": ""}, {"address": "   "}, {"address": None}, {"address": 123},
+    {"address": ["225 Stanger St"]}, {"address": "x" * 501},
+    {"address": "225 Stanger St", "latitude": 37, "longitude": -80},
+    {"address": "225 Stanger St", "place_id": "ChIJ-street"},
+])
+def test_invalid_addresses_fail_before_calling_google(monkeypatch, body):
+    def unexpected(*args, **kwargs):
+        pytest.fail("Invalid address reached Google")
+    monkeypatch.setattr(google_maps_service.httpx, "get", unexpected)
+    assert post("pin", body).status_code == 400
+
+
+@pytest.mark.parametrize("results", [
+    [],
+    [{**STREET, "partial_match": True}],
+    [{**STREET, "types": ["locality", "political"]}],
+    [STREET, LIBRARY],
+])
+def test_unmatched_or_imprecise_addresses_are_not_saved(monkeypatch, results):
+    google_returns(monkeypatch, {"status": "OK" if results else "ZERO_RESULTS", "results": results})
+    def unexpected():
+        pytest.fail("An unresolved address reached the database")
+    monkeypatch.setattr("app.routes.locations.get_supabase", unexpected)
+    response = post("pin", {"address": "Uncertain address"})
+    assert response.status_code == 404
+    assert "address" in response.json["error"]
+
+
+@pytest.mark.parametrize("point", [
+    {}, {"lat": None, "lng": -80}, {"lat": 91, "lng": -80},
+    {"lat": 37, "lng": float("nan")}, {"lat": True, "lng": -80},
+])
+def test_geocoded_address_requires_valid_coordinates(monkeypatch, point):
+    google_returns(monkeypatch, {
+        "status": "OK", "results": [{**STREET, "geometry": {"location": point}}],
+    })
+    def unexpected():
+        pytest.fail("Invalid geocoded coordinates reached the database")
+    monkeypatch.setattr("app.routes.locations.get_supabase", unexpected)
+    assert post("pin", {"address": STREET["formatted_address"]}).status_code == 502
