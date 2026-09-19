@@ -85,7 +85,8 @@ export default function LocationMap({ query, locations, homeAreas, selectedId, o
 
     useEffect(() => {
         if (!runtime) return
-        const markers = locations.map((location) => {
+        // A dorm only gets a pin once it has a report in the current period; it stays in the list either way.
+        const markers = locations.filter((location) => location.stats.total_reports > 0).map((location) => {
             const selected = location.id === selectedId
             const marker = new runtime.marker.AdvancedMarkerElement({
                 map: runtime.map,

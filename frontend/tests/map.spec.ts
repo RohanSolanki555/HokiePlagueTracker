@@ -5,8 +5,8 @@ const listRow = (page: Page, name: string) => page.locator("button[aria-pressed]
 const homeMarkers = (page: Page) => page.locator('test-marker[aria-hidden="true"]')
 const markers = (page: Page) => page.locator("test-marker")
 
-// Search-centre pin + 2 dorm pins + 1 home area.
-const INITIAL_MARKERS = 4
+// Search-centre pin + 1 dorm pin (Slusher Hall has no reports, so it has none) + 1 home area.
+const INITIAL_MARKERS = 3
 
 test("a failed Google script loads once and does not block dorm data", async ({ page }) => {
     let scripts = 0
@@ -116,6 +116,33 @@ test("a dorm report increments its pin, the totals, and its statistics", async (
     }).first()
     await expect(totalCard.getByText("7", { exact: true })).toBeVisible()
     await expect(markers(page)).toHaveCount(INITIAL_MARKERS)
+})
+
+test("a dorm with no reports has no pin until its first report, then starts counting", async ({ page }) => {
+    await mockGoogleMaps(page)
+    await mockData(page)
+    let total = 0
+    const slusher = () => ({ ...mapData.locations[1], stats: { ...mapData.summary, total_reports: total, reports_today: total } })
+    await page.route("**/api/locations/map?*", (route) => route.fulfill({ json: {
+        ...mapData, locations: [mapData.locations[0], slusher()],
+    } }))
+    await page.route("**/api/reports", (route) => {
+        total = 1
+        return route.fulfill({ status: 201, json: { report: { id: 1003, location_id: 99, severity: 3, created_at: "2026-09-19T12:00:00Z" } } })
+    })
+    await page.goto("/")
+    await expect(markers(page)).toHaveCount(INITIAL_MARKERS)
+    await expect(page.locator('test-marker[aria-label^="Slusher Hall"]')).toHaveCount(0)
+    await expect(listRow(page, "Slusher Hall")).toBeVisible() // Still listed and selectable without a pin.
+
+    await page.getByLabel("Dorm", { exact: true }).selectOption({ label: "Slusher Hall" })
+    await page.getByLabel("Floor", { exact: true }).selectOption({ label: "Floor 1" })
+    await page.getByLabel("Illness", { exact: true }).selectOption("Common cold")
+    await page.getByRole("button", { name: "Submit report", exact: true }).click()
+
+    const pin = page.getByRole("button", { name: "Slusher Hall: 1 reports", exact: true })
+    await expect(pin.locator("test-pin")).toHaveText("1")
+    await expect(markers(page)).toHaveCount(INITIAL_MARKERS + 1)
 })
 
 test("a home report adds only an unclickable area, without moving the map or exposing the address", async ({ page }) => {
