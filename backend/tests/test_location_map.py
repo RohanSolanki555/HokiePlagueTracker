@@ -1,0 +1,195 @@
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+
+import pytest
+import httpx
+from postgrest import SyncPostgrestClient
+
+from app import create_app
+from app.services.map_service import distance_km, get_map_data, read_all, summarize_reports
+
+
+NOW = datetime(2026, 9, 19, 12, tzinfo=timezone.utc)
+
+
+def test_real_postgrest_builder_sends_one_offset_per_page():
+    offsets = []
+    def handle(request):
+        assert len(request.url.params.get_list("offset")) == 1
+        assert len(request.url.params.get_list("limit")) == 1
+        offset = int(request.url.params["offset"])
+        offsets.append(offset)
+        # Simulate a server row cap below PAGE_SIZE.
+        return httpx.Response(200, json=[{"id": index} for index in range(5)][offset:offset + 2])
+
+    with httpx.Client(base_url="https://database.test", transport=httpx.MockTransport(handle)) as http:
+        client = SyncPostgrestClient("https://database.test", http_client=http)
+        rows = list(read_all(lambda: client.table("locations").select("id").order("id")))
+    assert [row["id"] for row in rows] == list(range(5))
+    assert offsets == [0, 2, 4, 5]
+
+
+class FakeQuery:
+    def __init__(self, rows, cap):
+        self.rows = list(rows)
+        self.cap = cap
+
+    def select(self, _columns):
+        return self
+
+    def order(self, column):
+        self.rows.sort(key=lambda row: row[column])
+        return self
+
+    def gte(self, column, value):
+        self.rows = [row for row in self.rows if row[column] >= value]
+        return self
+
+    def lte(self, column, value):
+        self.rows = [row for row in self.rows if row[column] <= value]
+        return self
+
+    def in_(self, column, values):
+        self.rows = [row for row in self.rows if row[column] in values]
+        return self
+
+    def range(self, start, end):
+        self.page = self.rows[start:min(end + 1, start + self.cap)]
+        return self
+
+    def execute(self):
+        return SimpleNamespace(data=self.page)
+
+
+class FakeSupabase:
+    def __init__(self, locations, reports, cap=2):
+        self.tables = {"locations": locations, "reports": reports}
+        self.cap = cap
+        self.read_tables = []
+
+    def table(self, name):
+        self.read_tables.append(name)
+        return FakeQuery(self.tables[name], self.cap)
+
+
+def location(id, latitude=37.2296, longitude=-80.4139):
+    return {"id": id, "name": f"Location {id}", "location_type": "campus", "latitude": latitude, "longitude": longitude}
+
+
+def report(id, location_id, age, severity=3):
+    return {"id": id, "location_id": location_id, "severity": severity, "created_at": (NOW - age).isoformat()}
+
+
+def test_map_joins_by_id_and_paginates_without_losing_reports():
+    database = FakeSupabase(
+        [location(1), location(2), location(3, 38), location(4, None), location(5, float("nan"))],
+        [
+            report(1, 1, timedelta(hours=1), 2),
+            report(2, 1, timedelta(hours=2), 4),
+            report(3, 1, timedelta(days=1), 3),
+            report(4, 1, timedelta(days=7), 1),  # Current period boundary.
+            report(5, 1, timedelta(days=8)),
+            report(6, 1, timedelta(days=14)),  # Previous period boundary.
+            report(7, 1, timedelta(days=15)),
+            report(8, 3, timedelta(hours=1)),  # Outside the radius.
+            report(9, 1, timedelta(hours=-1)),  # Future reports are excluded.
+            report(10, 4, timedelta(hours=1)),  # Unmapped locations are excluded.
+        ],
+    )
+    data = get_map_data(database, 37.2296, -80.4139, 3, 7, NOW)
+    assert [row["id"] for row in data["locations"]] == [1, 2]
+    assert data["unmapped_locations"] == 2
+    first, second = data["locations"]
+    assert first["stats"]["total_reports"] == 4
+    assert first["stats"]["reports_today"] == 2
+    assert first["stats"]["average_severity"] == 2.5
+    assert first["stats"]["previous_period_reports"] == 2
+    assert first["stats"]["change_percent"] == 100
+    assert second["stats"]["total_reports"] == 0  # Same coordinates, distinct ID.
+    assert second["stats"]["average_severity"] is None
+    assert data["summary"] == first["stats"]
+
+
+def test_empty_area_does_not_query_reports():
+    database = FakeSupabase([location(1, 40)], [])
+    data = get_map_data(database, 0, 0, 3, 7, NOW)
+    assert data["locations"] == []
+    assert data["summary"]["total_reports"] == 0
+    assert set(database.read_tables) == {"locations"}
+
+
+def test_zero_coordinates_are_valid_and_dateline_distance_is_short():
+    database = FakeSupabase([location(1, 0, 0)], [])
+    assert len(get_map_data(database, 0, 0, 0.1, 7, NOW)["locations"]) == 1
+    assert 22 < distance_km(0, 179.9, 0, -179.9) < 23
+    assert distance_km(90, 0, -90, 180) == pytest.approx(20015.1144, rel=1e-6)
+
+
+def test_many_location_ids_are_batched_without_double_counting():
+    database = FakeSupabase(
+        [location(id) for id in range(1, 106)],
+        [report(id, id, timedelta(hours=1)) for id in range(1, 106)],
+        cap=30,
+    )
+    data = get_map_data(database, 37.2296, -80.4139, 3, 7, NOW)
+    assert len(data["locations"]) == 105
+    assert data["summary"]["total_reports"] == 105
+    assert database.read_tables.count("reports") >= 2
+
+
+def test_today_uses_eastern_midnight_and_new_reports_have_no_percentage():
+    stats = summarize_reports([
+        report(1, 1, timedelta(hours=8)),  # 04:00 UTC = midnight EDT.
+        report(2, 1, timedelta(hours=8, seconds=1)),
+    ], NOW, 7)
+    assert stats["reports_today"] == 1
+    assert stats["total_reports"] == 2
+    assert stats["change_percent"] is None
+
+
+@pytest.mark.parametrize("query", [
+    "latitude=91&longitude=0", "latitude=0&longitude=-181",
+    "latitude=NaN&longitude=0", "latitude=0&longitude=inf",
+    "latitude=1", "longitude=1", "latitude=&longitude=0",
+    "radius_km=0", "radius_km=101", "radius_km=NaN",
+    "days=0", "days=31", "days=1.5", "days=hello",
+])
+def test_invalid_map_queries_fail_before_accessing_database(query, monkeypatch):
+    def unexpected_database_access():
+        pytest.fail("Invalid parameters reached the database")
+    monkeypatch.setattr("app.routes.locations.get_supabase", unexpected_database_access)
+    response = create_app().test_client().get(f"/api/locations/map?{query}")
+    assert response.status_code == 400
+    assert response.json["error"]
+
+
+def test_map_endpoint_returns_real_data_and_preserves_id(monkeypatch):
+    database = FakeSupabase([location(42)], [])
+    monkeypatch.setattr("app.routes.locations.get_supabase", lambda: database)
+    response = create_app().test_client().get("/api/locations/map")
+    assert response.status_code == 200
+    assert response.json["locations"][0]["id"] == 42
+    assert response.json["center"] == {"latitude": 37.2296, "longitude": -80.4139}
+
+
+@pytest.mark.parametrize("endpoint,module", [("/api/locations/map", "locations"), ("/api/stats/summary", "stats")])
+def test_database_failures_are_not_reported_as_zero(endpoint, module, monkeypatch):
+    def fail():
+        raise RuntimeError("private database details")
+    monkeypatch.setattr(f"app.routes.{module}.get_supabase", fail)
+    response = create_app().test_client().get(endpoint)
+    assert response.status_code == 503
+    assert "private" not in response.json["error"]
+    assert "reports_today" not in response.json
+
+
+def test_summary_endpoint_uses_database_counts(monkeypatch):
+    now = datetime.now(timezone.utc)
+    database = FakeSupabase([], [
+        {"id": 1, "location_id": 42, "severity": 2, "created_at": (now - timedelta(seconds=1)).isoformat()},
+    ])
+    monkeypatch.setattr("app.routes.stats.get_supabase", lambda: database)
+    response = create_app().test_client().get("/api/stats/summary")
+    assert response.status_code == 200
+    assert response.json["reports_this_week"] == 1
+    assert response.json["weekly_change"] is None
