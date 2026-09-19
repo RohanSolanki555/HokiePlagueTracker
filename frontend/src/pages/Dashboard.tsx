@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import ReportForm from "@/components/ReportForm"
 
 export default function Dashboard() {
     return (
@@ -61,6 +62,7 @@ export default function Dashboard() {
 
                 </div>
 
+                <ReportForm />
             </div>
         </main>
     )

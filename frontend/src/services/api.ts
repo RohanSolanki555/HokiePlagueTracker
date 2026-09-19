@@ -10,17 +10,18 @@ async function request<T>(
     const response = await fetch(
         `${API_URL}${endpoint}`,
         {
+            ...options,
             headers: {
                 "Content-Type": "application/json",
                 ...options?.headers,
             },
-            ...options,
         }
     )
 
     if (!response.ok) {
+        const body = await response.json().catch(() => null)
         throw new Error(
-            `API request failed: ${response.status}`
+            body?.error ?? `API request failed: ${response.status}`
         )
     }
 
@@ -56,13 +57,16 @@ export interface HealthResponse {
 
 export interface Report {
     id: number
-    location_id: number
+    location_id: number | null
     severity: number
     created_at: string
 }
 
 export interface CreateReportRequest {
-    location_id: number
+    address: string
+    illness: string
+    flu_type?: "A" | "B"
+    location_id?: number | null
     severity: number
 }
 
