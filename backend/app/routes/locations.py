@@ -99,10 +99,12 @@ def pin_location():
 def get_locations():
     supabase = get_supabase()
 
+    # Dorms only, and only public columns: other rows may be private address-derived pins.
     response = (
         supabase
         .table("locations")
-        .select("*")
+        .select("id,name,location_type,latitude,longitude,floors")
+        .eq("is_dorm", True)
         .order("name")
         .execute()
     )

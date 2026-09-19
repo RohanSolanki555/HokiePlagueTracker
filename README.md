@@ -69,8 +69,8 @@ The integration uses the existing API's table contract:
 
 | Table | Required columns |
 | --- | --- |
-| `locations` | `id`, `name`, `location_type`, `latitude`, `longitude` |
-| `reports` | `id`, `location_id`, `severity` (numeric), `created_at` (timestamp) |
+| `locations` | `id`, `name`, `location_type`, `latitude`, `longitude`, plus `is_dorm` and `floors` (migration 003) |
+| `reports` | `id`, `location_id` (null for off-campus reports), `severity` (numeric), `created_at` (timestamp), `illness`, plus `residence_type`, `floor`, `area_latitude`, `area_longitude` (migration 003) |
 
 `reports.location_id` must reference `locations.id`. Coordinates only position a saved location; reports are always joined by ID, so two entries at the same coordinates retain separate statistics.
 
@@ -80,13 +80,29 @@ Populate both coordinate fields on the desired **existing location rows** using 
 
 No live database migration is run by application startup. Local checks use test fixtures; live Supabase and Google access require your configured credentials.
 
+## Dorms and private home reports
+
+The dashboard's **Virginia Tech dorms** section lists every dorm with its report count. Selecting a dorm (from the list or its map pin) shows its totals, average severity, change from the prior period, and charts of illnesses reported, reports per day, and reports by floor.
+
+**Report an illness** asks where the person is staying:
+
+- **On-campus dorm:** a dorm and floor from the database's dorm list. The report is linked to that dorm (`location_id`) and counted in its statistics.
+- **Off campus:** a street address, geocoded once by Flask. Only the centre of a ~550 m grid cell is stored (`area_latitude`/`area_longitude`, see `blur_to_area` in `map_service.py`). The address is **not** stored, no `locations` row is created, and the API never returns the exact position. These reports appear on the map as small gray dots that cannot be clicked, have no name or tooltip, and still count toward the area totals.
+
+Dorms are rows in `locations` with `is_dorm = true` and a `floors` count. Run [003_dorms_and_private_home_reports.sql](backend/migrations/003_dorms_and_private_home_reports.sql) once (after 001 and 002), then run [004_seed_vt_dorms.sql](backend/migrations/004_seed_vt_dorms.sql), which adds the 27 Virginia Tech dorms with coordinates (safe to re-run; existing names are skipped). Each dorm row is a `locations` row with `name`, `location_type` = `Residence`, `is_dorm` = true, `latitude`, `longitude` and an optional `floors`. While `floors` is null the report form asks for a floor number instead of offering a list; set it per dorm in the Table Editor. The map only sends dorm locations, so any older address-named rows in `locations` stay hidden; review them in the Supabase table editor and delete the ones that are home addresses. Older `reports.address` values are not removed by the migration.
+
+```text
+GET  /api/dorms?days=7        every dorm with its statistics
+GET  /api/dorms/<id>?days=7   one dorm: stats, illnesses, daily counts, floors
+POST /api/reports             dorm: {residence_type:"dorm", dorm_id, floor, illness, severity[, flu_type]}
+                              home: {residence_type:"home", address, illness, severity[, flu_type]}
+```
+
+Report responses contain only `{"report": {id, location_id, severity, created_at}}`. Errors: 400 invalid input or unknown dorm, 404 address not found, 502 Google failed, 503 storage unavailable.
+
 ## Saving a pin
 
-Use **Report an illness** above the dashboard map: enter a full street address, select an illness and severity, then select **Submit report**. Flask geocodes the address, saves or reuses its location, and inserts a report linked to that location. The dashboard centers on the pin and refreshes its report count. Multiple reports at the same Google place share one pin; each saved report adds to the count. The selected radius and report period are preserved.
-
-Reported locations are shared map pins, visible to other users. Unmatched, ambiguous, or incomplete address results ask the user to refine the address before saving a report. The lower-level `/api/locations/pin` endpoint still saves a location without submitting an illness report.
-
-This uses the existing location migrations below; no new migration is required. Flask also continues to accept dropped coordinates and Google place IDs. Address lookup follows Google's [Geocoding API](https://developers.google.com/maps/documentation/geocoding/requests-geocoding).
+The lower-level pin endpoints are separate from illness reports. Flask accepts an address, dropped coordinates or a Google place ID and can save the result as a location. Address lookup follows Google's [Geocoding API](https://developers.google.com/maps/documentation/geocoding/requests-geocoding). Do not save a person's home address through `/api/locations/pin`: that creates a location row.
 
 1. In Google Cloud, enable the **Geocoding API** (and **Places API (New)** for real place names) and create a **second, server-side key** restricted to that API. Do not reuse the browser key (browser keys are usually restricted by website, which Flask requests can't satisfy).
 2. Put it in `backend/.env` as `GOOGLE_MAPS_API_KEY`.
@@ -111,7 +127,7 @@ GET /api/locations/map?latitude=37.2296&longitude=-80.4139&radius_km=3&days=7
 
 Defaults are the values shown above. Supply latitude and longitude together. Latitude must be -90–90, longitude -180–180, radius 0.1–100 km, and days an integer from 1–30. Invalid queries return HTTP 400; unavailable database data returns HTTP 503.
 
-The response includes `center`, `radius_km`, `days`, `generated_at`, `unmapped_locations`, an area `summary`, and `locations`. Each location retains its database `id`, coordinates, distance from the search center, and a `stats` object:
+The response includes `center`, `radius_km`, `days`, `generated_at`, `unmapped_locations` (dorms without coordinates), an area `summary`, `home_areas` (anonymous cells: `latitude`, `longitude`, `reports`), and `locations` (dorms only). Each location retains its database `id`, coordinates, distance from the search center, and a `stats` object:
 
 ```json
 {
@@ -126,9 +142,7 @@ The response includes `center`, `radius_km`, `days`, `generated_at`, `unmapped_l
 
 The example is illustrative. Counts use a rolling `days` window and compare against the immediately preceding window of equal length. “Today” starts at midnight in `America/New_York`. Future reports are excluded. A percentage change from zero to a nonzero count is `null` and displayed as “New reports”; two empty periods produce 0%. Severity is the mean of non-null numeric scores in the current period; no scores produce `null`.
 
-The existing `/api/stats/summary` returns actual database totals across all locations, with `weekly_change` nullable when there is no prior baseline. The dashboard uses the map endpoint so its displayed totals match its selected area. Pin labels, nearby-location counts, and summary cards all use the same saved-report counts for the selected period. They refresh immediately after a successful submission, every 15 seconds while the page is visible, and when the user returns to the tab. Counts are calculated from report rows, so failed submissions never increment them.
-
-Location creation and report insertion are separate database requests. If report insertion fails, a location with zero reports may remain, but no report is counted.
+The existing `/api/stats/summary` returns actual database totals across all locations, with `weekly_change` nullable when there is no prior baseline. The dashboard uses the map endpoint so its displayed totals match its selected area. Pin labels, dorm counts, and summary cards all use the same saved-report counts for the selected period; the summary also includes off-campus reports inside the search radius. They refresh immediately after a successful submission, every 15 seconds while the page is visible, and when the user returns to the tab. Counts are calculated from report rows, so failed submissions never increment them.
 
 Queries paginate locations and reports to avoid Supabase row-limit truncation. This implementation is intended for campus-scale data; it reads saved locations to calculate distance and aggregates matching reports in Flask. For a much larger dataset, move the distance filter and aggregation into an indexed PostGIS query or database function.
 
@@ -167,11 +181,8 @@ Start the backend from `backend/` with `python run.py` after installing
 `requirements.txt`. Start the frontend from `frontend/` with `npm install`
 and `npm run dev`.
 
-Use the **Report an illness** form directly above the dashboard map, or visit
-`/report`. The separate report page includes a **Back to dashboard** link and,
-after saving, a **View report on map** link that centers and selects the reported
-location. When deploying, configure the frontend host to serve `index.html` for
-`/report` (Vite handles this locally).
+Use the **Report an illness** form directly above the dashboard map.
+After saving, the dashboard centers and selects the reported location.
 
 The report form saves an address, an illness selected from a dropdown, and
 severity (1–5) through `POST /api/reports`. The backend resolves the address and

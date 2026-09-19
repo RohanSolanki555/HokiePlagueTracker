@@ -28,7 +28,7 @@ and lets the user create and confirm a password. `/login` uses email/password;
 `/forgot-password` sends a reset link to `/auth/reset`. Passwords go directly
 to Supabase Auth, never to Flask or the profiles table.
 
-Dashboard (`/` or `/dashboard`) and `/report` require a verified VT session
+Dashboard (`/` or `/dashboard`), including its report form, requires a verified VT session
 with password setup complete. Flask verifies bearer tokens with Supabase Auth
 for every API request except `/api/health` and CORS preflights. Reports retain
 no account UUID. Profile access is restricted to the account owner.

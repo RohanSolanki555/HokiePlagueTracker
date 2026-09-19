@@ -1,7 +1,8 @@
 """Location/report joins for the map. Coordinates position pins; IDs join reports."""
 
+from collections import Counter
 from datetime import datetime, timedelta, timezone
-from math import asin, cos, isfinite, radians, sin, sqrt
+from math import asin, cos, floor, isfinite, radians, sin, sqrt
 from zoneinfo import ZoneInfo
 
 from postgrest.exceptions import APIError
@@ -9,6 +10,22 @@ from postgrest.exceptions import APIError
 
 CAMPUS_TIMEZONE = ZoneInfo("America/New_York")
 PAGE_SIZE = 500
+# Home reports are snapped to the centre of a grid cell about 550 m tall before
+# they are stored, so neither the database nor the API holds a home position.
+HOME_AREA_GRID_DEGREES = 0.005
+
+
+def blur_to_area(latitude, longitude):
+    """Snap a point to its grid cell centre. Deterministic, so repeated reports cannot be averaged."""
+    return tuple(
+        round((floor(value / HOME_AREA_GRID_DEGREES) + 0.5) * HOME_AREA_GRID_DEGREES, 6)
+        for value in (latitude, longitude)
+    )
+
+
+def parse_timestamp(value):
+    created_at = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return created_at.replace(tzinfo=timezone.utc) if created_at.tzinfo is None else created_at
 
 
 def read_all(build_query):
@@ -64,6 +81,19 @@ def read_reports(supabase, since, now, location_ids=None):
         yield from read_all(build_query)
 
 
+def read_home_reports(supabase, since, now):
+    def build_query():
+        return (
+            supabase.table("reports")
+            .select("id,severity,created_at,area_latitude,area_longitude")
+            .eq("residence_type", "home")
+            .gte("created_at", since.isoformat())
+            .lte("created_at", now.isoformat())
+            .order("id")
+        )
+    yield from read_all(build_query)
+
+
 def summarize_reports(reports, now, days):
     start = now - timedelta(days=days)
     previous_start = start - timedelta(days=days)
@@ -74,9 +104,7 @@ def summarize_reports(reports, now, days):
     severities = []
     latest = None
     for report in reports:
-        created_at = datetime.fromisoformat(report["created_at"].replace("Z", "+00:00"))
-        if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=timezone.utc)
+        created_at = parse_timestamp(report["created_at"])
         if created_at > now or created_at < previous_start:
             continue
         if created_at < start:
@@ -151,9 +179,11 @@ def get_map_data(supabase, latitude, longitude, radius_km, days, now=None):
     locations = []
     unmapped = 0
     def build_locations_query():
+        # Only dorms are clickable. Other saved locations (including any created
+        # from a street address in older versions) are never sent to the map.
         return supabase.table("locations").select(
-            "id,name,location_type,latitude,longitude"
-        ).order("id")
+            "id,name,location_type,latitude,longitude,floors"
+        ).eq("is_dorm", True).order("id")
 
     for row in read_all(build_locations_query):
         point = coordinates(row)
@@ -179,12 +209,33 @@ def get_map_data(supabase, latitude, longitude, radius_km, days, now=None):
     for location in locations:
         location["stats"] = summarize_reports(grouped[location["id"]], now, days)
     locations.sort(key=lambda location: (location["distance_km"], location["name"]))
+
+    # Home reports contribute to the totals and to anonymous, unclickable cells.
+    period_start = now - timedelta(days=days)
+    home_reports = []
+    cells = Counter()
+    for report in read_home_reports(supabase, now - timedelta(days=days * 2), now):
+        point = coordinates({"latitude": report["area_latitude"], "longitude": report["area_longitude"]})
+        if point is None:
+            continue
+        point = blur_to_area(*point)
+        if distance_km(latitude, longitude, *point) > radius_km:
+            continue
+        home_reports.append(report)
+        created_at = parse_timestamp(report["created_at"])
+        if period_start <= created_at <= now:
+            cells[point] += 1
+
     return {
         "center": {"latitude": latitude, "longitude": longitude},
         "radius_km": radius_km,
         "days": days,
         "generated_at": now.isoformat(),
         "locations": locations,
-        "summary": summarize_reports(reports, now, days),
+        "home_areas": [
+            {"latitude": cell_latitude, "longitude": cell_longitude, "reports": count}
+            for (cell_latitude, cell_longitude), count in sorted(cells.items())
+        ],
+        "summary": summarize_reports(reports + home_reports, now, days),
         "unmapped_locations": unmapped,
     }
