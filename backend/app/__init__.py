@@ -1,0 +1,39 @@
+from flask import Flask
+from flask_cors import CORS
+
+from app.config import Config
+from app.routes.health import health_bp
+from app.routes.reports import reports_bp
+from app.routes.locations import locations_bp
+from app.routes.stats import stats_bp
+
+
+def create_app():
+    app = Flask(__name__)
+
+    CORS(
+        app,
+        origins=[Config.FRONTEND_URL]
+    )
+
+    app.register_blueprint(
+        health_bp,
+        url_prefix="/api"
+    )
+
+    app.register_blueprint(
+        reports_bp,
+        url_prefix="/api/reports"
+    )
+
+    app.register_blueprint(
+        locations_bp,
+        url_prefix="/api/locations"
+    )
+
+    app.register_blueprint(
+        stats_bp,
+        url_prefix="/api/stats"
+    )
+
+    return app
