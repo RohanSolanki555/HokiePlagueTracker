@@ -4,6 +4,8 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { api, type CreateReportRequest, type DormSummary } from "@/services/api"
 
+const ADDRESS_SUFFIX = ", Blacksburg, VA"
+
 const illnesses = [
     "Common cold",
     "COVID-19",
@@ -40,7 +42,7 @@ export default function ReportForm({ onSubmitted }: Props) {
     const [severity, setSeverity] = useState("3")
     const [submitting, setSubmitting] = useState(false)
     const [error, setError] = useState("")
-    const [success, setSuccess] = useState<{ message: string; dormId: number | null } | null>(null)
+    const [success, setSuccess] = useState("")
 
     useEffect(() => {
         const controller = new AbortController()
@@ -58,7 +60,7 @@ export default function ReportForm({ onSubmitted }: Props) {
         event.preventDefault()
         if (submitting) return
         setError("")
-        setSuccess(null)
+        setSuccess("")
         if (!illness.trim()) {
             setError("Select an illness.")
             return
@@ -75,7 +77,7 @@ export default function ReportForm({ onSubmitted }: Props) {
                 setError("Enter your address.")
                 return
             }
-            where = { residence_type: "home", address: address.trim() }
+            where = { residence_type: "home", address: `${address.trim()}${ADDRESS_SUFFIX}` }
         }
         const report: CreateReportRequest = {
             ...where,
@@ -91,12 +93,9 @@ export default function ReportForm({ onSubmitted }: Props) {
             setIllness("")
             setFluType("")
             setSeverity("3")
-            setSuccess({
-                message: selectedDorm && savedDormId !== null
-                    ? `Your report was saved for ${selectedDorm.name}.`
-                    : "Your report was saved. It appears on the map only as an approximate area.",
-                dormId: savedDormId,
-            })
+            setSuccess(selectedDorm && savedDormId !== null
+                ? `Your report was saved for ${selectedDorm.name}.`
+                : "Your report was saved. It appears on the map only as an approximate area.")
             onSubmitted?.({ dormId: savedDormId })
         } catch (error) {
             setError(error instanceof Error ? error.message : "Unable to save your report.")
@@ -153,10 +152,13 @@ export default function ReportForm({ onSubmitted }: Props) {
                         </> : (
                             <div className="space-y-2 sm:col-span-2">
                                 <label htmlFor="report-address" className="text-sm font-medium">Street address</label>
-                                <Input id="report-address" name="address" autoComplete="street-address"
-                                    placeholder="225 Stanger St, Blacksburg, VA"
-                                    required maxLength={500} value={address}
-                                    onChange={(event) => setAddress(event.target.value)} />
+                                <div className="flex items-center gap-2">
+                                    <Input id="report-address" name="address" autoComplete="address-line1"
+                                        placeholder="225 Stanger St" aria-describedby="report-city"
+                                        required maxLength={500 - ADDRESS_SUFFIX.length} value={address}
+                                        onChange={(event) => setAddress(event.target.value)} />
+                                    <span id="report-city" className="shrink-0 whitespace-nowrap text-sm text-muted-foreground">Blacksburg, VA</span>
+                                </div>
                             </div>
                         )}
                         <div className="space-y-2">
@@ -200,13 +202,7 @@ export default function ReportForm({ onSubmitted }: Props) {
                         </Button>
                     </fieldset>
                     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-                    {success && <div className="space-y-2">
-                        <p role="status" className="text-sm">{success.message}</p>
-                        {!onSubmitted && success.dormId !== null && <a
-                            className="text-sm font-medium text-[#861f41] underline underline-offset-4"
-                            href={`/?location_id=${success.dormId}`}
-                        >View dorm on the dashboard</a>}
-                    </div>}
+                    {success && <p role="status" className="text-sm">{success}</p>}
                 </form>
             </CardContent>
         </Card>

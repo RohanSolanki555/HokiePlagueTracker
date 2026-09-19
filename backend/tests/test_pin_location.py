@@ -263,7 +263,7 @@ def test_unmatched_or_imprecise_addresses_are_not_saved(monkeypatch, results):
     monkeypatch.setattr("app.routes.locations.get_supabase", unexpected)
     response = post("pin", {"address": "Uncertain address"})
     assert response.status_code == 404
-    assert "address" in response.json["error"]
+    assert "address" in response.json["error"].lower()
 
 
 @pytest.mark.parametrize("point", [

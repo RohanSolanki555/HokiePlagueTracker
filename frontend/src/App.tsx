@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react"
 import type { Session } from "@supabase/supabase-js"
 import Dashboard from "@/pages/Dashboard"
-import Report from "@/pages/Report"
 import Auth from "@/pages/Auth"
 import { isVtEmail, supabase } from "@/services/auth"
 import { Button } from "@/components/ui/button"
@@ -55,7 +54,7 @@ function App() {
             <span className="text-sm">{user.email}</span><Button variant="outline" onClick={logout}>Sign out</Button>
             {error && <p role="alert">{error}</p>}
         </header>
-        {path === "/report" ? <Report /> : <Dashboard />}
+        <Dashboard />
     </>
 }
 

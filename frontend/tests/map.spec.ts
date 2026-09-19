@@ -138,7 +138,7 @@ test("a home report adds only an unclickable area, without moving the map or exp
     await page.goto("/")
     await expect(markers(page)).toHaveCount(INITIAL_MARKERS)
     await page.getByLabel("Off campus").check()
-    await page.getByLabel("Street address", { exact: true }).fill("225 Stanger St, Blacksburg, VA")
+    await page.getByLabel("Street address", { exact: true }).fill("225 Stanger St")
     await page.getByLabel("Illness", { exact: true }).selectOption("Common cold")
     await page.getByRole("button", { name: "Submit report", exact: true }).click()
 

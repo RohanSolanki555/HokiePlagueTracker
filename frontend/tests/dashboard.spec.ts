@@ -147,7 +147,8 @@ test("a home report sends only the address, and never moves the map or selects a
     })
     await page.goto("/")
     await page.getByLabel("Off campus").check()
-    await page.getByLabel("Street address", { exact: true }).fill(" 225 Stanger St, Blacksburg, VA ")
+    await expect(page.getByText("Blacksburg, VA", { exact: true })).toBeVisible()
+    await page.getByLabel("Street address", { exact: true }).fill(" 225 Stanger St ")
     await page.getByLabel("Illness", { exact: true }).selectOption("Flu")
     await page.getByLabel("Flu type (optional)").selectOption("B")
     await page.getByLabel("Severity", { exact: true }).selectOption("2")
@@ -162,7 +163,7 @@ test("a home report sends only the address, and never moves the map or selects a
 })
 
 for (const failure of [
-    { status: 404, error: "No location found for that address." },
+    { status: 404, error: "Address not found in Blacksburg, VA" },
     { status: 502, error: "Unable to look up that address. Please try again." },
     { status: 503, error: "Unable to save your report. Please try again later." },
 ]) {
@@ -174,13 +175,13 @@ for (const failure of [
             : route.fulfill({ status: 201, json: { report: { id: 103, location_id: null, severity: 4, created_at: "2026-09-19T12:00:00Z" } } }))
         await page.goto("/")
         await page.getByLabel("Off campus").check()
-        await page.getByLabel("Street address", { exact: true }).fill("560 Drillfield Dr, Blacksburg, VA")
+        await page.getByLabel("Street address", { exact: true }).fill("560 Drillfield Dr")
         await page.getByLabel("Illness", { exact: true }).selectOption("Flu")
         await page.getByLabel("Flu type (optional)").selectOption("A")
         await page.getByLabel("Severity", { exact: true }).selectOption("4")
         await submit(page).click()
         await expect(page.getByRole("alert")).toHaveText(failure.error)
-        await expect(page.getByLabel("Street address", { exact: true })).toHaveValue("560 Drillfield Dr, Blacksburg, VA")
+        await expect(page.getByLabel("Street address", { exact: true })).toHaveValue("560 Drillfield Dr")
         await expect(page.getByLabel("Illness", { exact: true })).toHaveValue("Flu")
         await expect(page.getByLabel("Flu type (optional)")).toHaveValue("A")
         await expect(page.getByLabel("Severity", { exact: true })).toHaveValue("4")
@@ -238,19 +239,4 @@ test("a dorm, floor and illness are required before a report can be sent", async
     await submit(page).click()
     await expect(page.getByLabel("Illness", { exact: true })).toBeFocused()
     expect(submissions).toBe(0)
-})
-
-test("the standalone report form links a dorm report back to that dorm", async ({ page }) => {
-    await mockData(page)
-    await page.route("**/api/reports", (route) => route.fulfill({ status: 201, json: {
-        report: { id: 101, location_id: 42, severity: 2, created_at: "2026-09-19T12:00:00Z" },
-    } }))
-    await page.goto("/report")
-    await fillDormReport(page)
-    await submit(page).click()
-    await expect(page.getByRole("status")).toHaveText("Your report was saved for Pritchard Hall.")
-    const link = page.getByRole("link", { name: "View dorm on the dashboard" })
-    await expect(link).toHaveAttribute("href", "/?location_id=42")
-    await link.click()
-    await expect(pritchard(page)).toHaveAttribute("aria-pressed", "true")
 })

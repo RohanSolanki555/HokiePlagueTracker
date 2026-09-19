@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test"
 import { mockSignedIn, user } from "./auth-helper"
 
 test("report requires login and signup rejects non-VT email", async ({ page }) => {
-    await page.goto("/report")
+    await page.goto("/")
     await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible()
     await expect(page.getByRole("button", { name: "Submit report" })).toHaveCount(0)
     await page.getByRole("link", { name: "Create account" }).click()
@@ -34,7 +34,7 @@ test("setup without email verification offers a new link", async ({ page }) => {
 
 test("verified user must finish password setup and passwords must match", async ({ page }) => {
     await mockSignedIn(page, { ...user, app_metadata: { password_setup_complete: false } })
-    await page.goto("/report")
+    await page.goto("/")
     await expect(page.getByRole("heading", { name: "Finish setting up your account" })).toBeVisible()
     await page.getByLabel("Create password").fill("example-password")
     await page.getByLabel("Confirm password").fill("different-password")
