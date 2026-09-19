@@ -4,6 +4,8 @@ from datetime import datetime, timedelta, timezone
 from math import asin, cos, isfinite, radians, sin, sqrt
 from zoneinfo import ZoneInfo
 
+from postgrest.exceptions import APIError
+
 
 CAMPUS_TIMEZONE = ZoneInfo("America/New_York")
 PAGE_SIZE = 500
@@ -104,13 +106,44 @@ def summarize_reports(reports, now, days):
 def save_pinned_location(supabase, metadata):
     """Insert a pinned location, or return the existing row for the same Google place."""
     place_id = metadata.get("place_id")
-    if place_id:
-        existing = (
+
+    def existing_location():
+        return (
             supabase.table("locations").select("*").eq("place_id", place_id).limit(1).execute().data
         )
+
+    def reuse_location(location):
+        # Legacy rows can have a place ID before they have usable coordinates.
+        # Repair invalid pairs together; preserve valid saved positions and names.
+        if coordinates(location) is None:
+            if coordinates(metadata) is None:
+                raise ValueError("The resolved place has no valid coordinates")
+            updates = {field: metadata[field] for field in ("latitude", "longitude")}
+            saved = (
+                supabase.table("locations").update(updates)
+                .eq("id", location["id"]).execute().data
+            )
+            if not saved or coordinates(saved[0]) is None:
+                raise ValueError("The location coordinates could not be confirmed as saved")
+            location = saved[0]
+        return location, False
+
+    if place_id:
+        existing = existing_location()
         if existing:
-            return existing[0], False
-    return supabase.table("locations").insert(metadata).execute().data[0], True
+            return reuse_location(existing[0])
+
+    try:
+        return supabase.table("locations").insert(metadata).execute().data[0], True
+    except APIError as error:
+        if error.code != "23505" or not place_id:
+            raise
+        # Another report/pin request can create this place after our first read.
+        # Reuse that row after the unique place_id constraint rejects our insert.
+        existing = existing_location()
+        if existing:
+            return reuse_location(existing[0])
+        raise
 
 
 def get_map_data(supabase, latitude, longitude, radius_km, days, now=None):

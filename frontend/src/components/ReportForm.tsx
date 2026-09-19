@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { api } from "@/services/api"
+import { api, type CreateReportResponse } from "@/services/api"
 
 const illnesses = [
     "Common cold",
@@ -18,27 +18,31 @@ const illnesses = [
     "Other",
 ]
 
-export default function ReportForm() {
+interface Props {
+    onSubmitted?: (result: CreateReportResponse) => void
+}
+
+export default function ReportForm({ onSubmitted }: Props) {
     const [address, setAddress] = useState("")
     const [illness, setIllness] = useState("")
     const [fluType, setFluType] = useState<"" | "A" | "B">("")
     const [severity, setSeverity] = useState("3")
     const [submitting, setSubmitting] = useState(false)
     const [error, setError] = useState("")
-    const [success, setSuccess] = useState(false)
+    const [success, setSuccess] = useState<CreateReportResponse | null>(null)
 
     async function submit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault()
         if (submitting) return
         setError("")
-        setSuccess(false)
+        setSuccess(null)
         if (!address.trim() || !illness.trim()) {
             setError("Enter your address and select an illness.")
             return
         }
         setSubmitting(true)
         try {
-            await api.createReport({
+            const saved = await api.createReport({
                 address: address.trim(),
                 illness: illness.trim(),
                 flu_type: illness === "Flu" && fluType ? fluType : undefined,
@@ -48,7 +52,8 @@ export default function ReportForm() {
             setIllness("")
             setFluType("")
             setSeverity("3")
-            setSuccess(true)
+            setSuccess(saved)
+            onSubmitted?.(saved)
         } catch (error) {
             setError(error instanceof Error ? error.message : "Unable to save your report.")
         } finally {
@@ -62,15 +67,15 @@ export default function ReportForm() {
                 <CardTitle>Report an illness</CardTitle>
             </CardHeader>
             <CardContent>
-                <form onSubmit={submit} className="max-w-xl space-y-4">
+                <form onSubmit={submit} className="space-y-4" aria-busy={submitting}>
                     <p className="text-sm text-muted-foreground">
-                        Share where you are experiencing illness. Your address is stored with your report and is not shown on the dashboard.
+                        Choose an illness and enter its location. Your address becomes a shared map pin, and your report adds to its count.
                     </p>
-                    <fieldset disabled={submitting} className="space-y-4">
-                        <div className="space-y-2">
-                            <label htmlFor="report-address" className="text-sm font-medium">Address</label>
+                    <fieldset disabled={submitting} className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-2 sm:col-span-2">
+                            <label htmlFor="report-address" className="text-sm font-medium">Street address</label>
                             <Input id="report-address" name="address" autoComplete="street-address"
-                                placeholder="Street address, city, state, ZIP code"
+                                placeholder="225 Stanger St, Blacksburg, VA 24060"
                                 required maxLength={500} value={address}
                                 onChange={(event) => setAddress(event.target.value)} />
                         </div>
@@ -110,12 +115,22 @@ export default function ReportForm() {
                                 <option value="5">5 — Very severe</option>
                             </select>
                         </div>
-                        <Button type="submit" disabled={submitting}>
-                            {submitting ? "Submitting…" : "Submit report"}
+                        <Button type="submit" disabled={submitting} className="bg-[#861f41] hover:bg-[#6b1934] sm:col-span-2 sm:justify-self-start">
+                            {submitting ? "Submitting..." : "Submit report"}
                         </Button>
                     </fieldset>
                     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-                    {success && <p role="status" className="text-sm">Your report was saved. Thank you for sharing.</p>}
+                    {success && <div className="space-y-2">
+                        <p role="status" className="text-sm">Your report was saved for {success.location.name}.</p>
+                        {!onSubmitted && <a
+                            className="text-sm font-medium text-[#861f41] underline underline-offset-4"
+                            href={`/?${new URLSearchParams({
+                                latitude: String(success.location.latitude),
+                                longitude: String(success.location.longitude),
+                                location_id: String(success.location.id),
+                            })}`}
+                        >View report on map</a>}
+                    </div>}
                 </form>
             </CardContent>
         </Card>

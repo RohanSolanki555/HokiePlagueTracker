@@ -82,18 +82,24 @@ No live database migration is run by application startup. Local checks use test 
 
 ## Saving a pin
 
-Flask turns a dropped pin into a saved location using Google's Geocoding API.
+Use **Report an illness** above the dashboard map: enter a full street address, select an illness and severity, then select **Submit report**. Flask geocodes the address, saves or reuses its location, and inserts a report linked to that location. The dashboard centers on the pin and refreshes its report count. Multiple reports at the same Google place share one pin; each saved report adds to the count. The selected radius and report period are preserved.
+
+Reported locations are shared map pins, visible to other users. Unmatched, ambiguous, or incomplete address results ask the user to refine the address before saving a report. The lower-level `/api/locations/pin` endpoint still saves a location without submitting an illness report.
+
+This uses the existing location migrations below; no new migration is required. Flask also continues to accept dropped coordinates and Google place IDs. Address lookup follows Google's [Geocoding API](https://developers.google.com/maps/documentation/geocoding/requests-geocoding).
 
 1. In Google Cloud, enable the **Geocoding API** (and **Places API (New)** for real place names) and create a **second, server-side key** restricted to that API. Do not reuse the browser key (browser keys are usually restricted by website, which Flask requests can't satisfy).
 2. Put it in `backend/.env` as `GOOGLE_MAPS_API_KEY`.
 3. Run [002_location_pin_metadata.sql](backend/migrations/002_location_pin_metadata.sql) once in the Supabase SQL editor, after 001. It adds `place_id`, `formatted_address`, `place_types` and `address_components` to `locations`.
 
 ```text
-POST /api/locations/lookup   preview the metadata, saves nothing
+POST /api/locations/lookup   preview address or pin metadata, saves nothing
 POST /api/locations/pin      look up the metadata and save it to Supabase
 ```
 
-Body (JSON): `latitude` and `longitude` together, and/or `place_id` (the ID Google Maps gives when a user clicks a place). Optional `name` and `location_type` (`Academic`, `Dining`, `Recreation`, `Residence`, `Off Campus`, `Other`) override what Google suggests; otherwise the name is the place's name from Google's Places API (New) when that API is enabled for the key (falling back to the street address, since the Geocoding API only returns addresses) and the type comes from Google's place types, defaulting to `Other`. When only `place_id` is sent, coordinates come from Google.
+Body (JSON): `address` (1-500 characters), **or** `latitude` and `longitude` together, and/or `place_id` (the ID Google Maps gives when a user clicks a place). Optional `name` and `location_type` (`Academic`, `Dining`, `Recreation`, `Residence`, `Off Campus`, `Other`) override what Google suggests; otherwise the name is the place's name from Google's Places API (New) when that API is enabled for the key (falling back to the street address, since the Geocoding API only returns addresses) and the type comes from Google's place types, defaulting to `Other`. When `address` or only `place_id` is sent, coordinates come from Google. Do not combine `address` with coordinates or a place ID.
+
+For example: `POST /api/locations/pin` with `{"address":"225 Stanger St, Blacksburg, VA 24060"}`.
 
 `/pin` returns `{"location": {...}, "created": true}` with HTTP 201. Pinning a place that is already saved (same `place_id`) returns the existing row with HTTP 200 instead of a duplicate. Errors: 400 invalid input, 404 Google has no address there, 502 Google failed, 503 server key missing or database unavailable.
 
@@ -120,7 +126,9 @@ The response includes `center`, `radius_km`, `days`, `generated_at`, `unmapped_l
 
 The example is illustrative. Counts use a rolling `days` window and compare against the immediately preceding window of equal length. “Today” starts at midnight in `America/New_York`. Future reports are excluded. A percentage change from zero to a nonzero count is `null` and displayed as “New reports”; two empty periods produce 0%. Severity is the mean of non-null numeric scores in the current period; no scores produce `null`.
 
-The existing `/api/stats/summary` now returns actual database totals across all locations, with `weekly_change` nullable when there is no prior baseline. The dashboard uses the map endpoint so its displayed totals match its selected area.
+The existing `/api/stats/summary` returns actual database totals across all locations, with `weekly_change` nullable when there is no prior baseline. The dashboard uses the map endpoint so its displayed totals match its selected area. Pin labels, nearby-location counts, and summary cards all use the same saved-report counts for the selected period. They refresh immediately after a successful submission, every 15 seconds while the page is visible, and when the user returns to the tab. Counts are calculated from report rows, so failed submissions never increment them.
+
+Location creation and report insertion are separate database requests. If report insertion fails, a location with zero reports may remain, but no report is counted.
 
 Queries paginate locations and reports to avoid Supabase row-limit truncation. This implementation is intended for campus-scale data; it reads saved locations to calculate distance and aggregates matching reports in Flask. For a much larger dataset, move the distance filter and aggregation into an indexed PostGIS query or database function.
 
@@ -149,24 +157,35 @@ tables, run `supabase/migrations/202609190001_report_details.sql` in the
 Supabase SQL editor. It adds address and illness text to reports without
 removing existing data, and restricts direct report access to the backend.
 
-Configure `backend/.env` with `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and
-`FRONTEND_URL=http://localhost:5173`. Keep the secret key on the backend.
+Configure `backend/.env` with `SUPABASE_URL`, `SUPABASE_SECRET_KEY`,
+`GOOGLE_MAPS_API_KEY`, and `FRONTEND_URL=http://localhost:5173`. Reporting now
+uses the same server-side address lookup and location migrations described above.
+Keep the secret keys on the backend.
 Configure `frontend/.env` with `VITE_API_URL=http://localhost:5000/api`.
 
 Start the backend from `backend/` with `python run.py` after installing
 `requirements.txt`. Start the frontend from `frontend/` with `npm install`
 and `npm run dev`.
 
-Use the dashboard's **Report an illness** button to open `/report`.
-The report page includes a **Back to dashboard** link. When deploying, configure
-the frontend host to serve `index.html` for `/report` (Vite handles this locally).
+Use the **Report an illness** form directly above the dashboard map, or visit
+`/report`. The separate report page includes a **Back to dashboard** link and,
+after saving, a **View report on map** link that centers and selects the reported
+location. When deploying, configure the frontend host to serve `index.html` for
+`/report` (Vite handles this locally).
 
 The report form saves an address, an illness selected from a dropdown, and
-severity (1–5) through `POST /api/reports`. `location_id` is optional and
-refers to an existing location category. The selected illness name is stored on
-the report; it does not populate the `report_symptoms` join table.
-Addresses and illness descriptions are excluded from report API responses.
-The dashboard summary cards remain placeholders.
+severity (1–5) through `POST /api/reports`. The backend resolves the address and
+sets `location_id` to the matching saved location. Clients do not need to select
+a location ID. The selected illness name is stored on the report; it does not
+populate the `report_symptoms` join table.
+
+A successful submission returns HTTP 201 with `{ "report": { "id", "location_id",
+"severity", "created_at" }, "location": { "id", "name", "location_type", "latitude",
+"longitude" } }` (field names shown schematically). Private report address and
+illness fields remain excluded from report responses; the resolved location is
+public map data. The returned location lets the frontend select the pin and
+reload its current statistics. Older reports with no `location_id` are preserved
+and are not automatically backfilled onto the map.
 
 No additional Supabase SQL is needed for the illness dropdown after the migration
 above has been applied: it uses the existing `reports.illness` text column.

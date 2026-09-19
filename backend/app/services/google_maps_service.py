@@ -1,5 +1,6 @@
-"""Turns a dropped map pin (coordinates and/or a Google place ID) into location metadata."""
+"""Resolves an address, coordinates, or Google place ID into location metadata."""
 
+from math import isfinite
 from urllib.parse import quote
 
 import httpx
@@ -64,13 +65,15 @@ def place_display_name(place_id, api_key):
         return None
 
 
-def lookup_place(latitude=None, longitude=None, place_id=None):
+def lookup_place(latitude=None, longitude=None, place_id=None, *, address=None):
     api_key = Config.GOOGLE_MAPS_API_KEY
     if not api_key:
         raise GoogleMapsNotConfigured("GOOGLE_MAPS_API_KEY is not configured")
 
     params = {"key": api_key}
-    if place_id:
+    if address:
+        params["address"] = address
+    elif place_id:
         params["place_id"] = place_id
     else:
         params["latlng"] = f"{latitude},{longitude}"
@@ -84,18 +87,32 @@ def lookup_place(latitude=None, longitude=None, place_id=None):
 
     status = payload.get("status")
     if status == "ZERO_RESULTS":
-        raise PlaceNotFound("Google has no address information for that pin")
+        raise PlaceNotFound(
+            "No location found for that address. Check the street number, city, state, and ZIP code."
+            if address else "Google has no address information for that pin"
+        )
     if status != "OK" or not payload.get("results"):
         raise GoogleMapsError(f"Google Maps returned {status}: {payload.get('error_message', 'no details')}")
 
-    result = pick_result(payload["results"])
+    results = payload["results"]
+    result = results[0] if address else pick_result(results)
     place_types = result.get("types", [])
+    if address:
+        specific_types = {"street_address", "premise", "subpremise", "establishment", "point_of_interest"}
+        if len(results) != 1 or result.get("partial_match") or not specific_types.intersection(place_types):
+            raise PlaceNotFound(
+                "Please enter a more specific address, including the street number, city, state, and ZIP code."
+            )
     formatted_address = result.get("formatted_address")
     if latitude is None or longitude is None:
         point = result.get("geometry", {}).get("location", {})
         latitude, longitude = point.get("lat"), point.get("lng")
-    if latitude is None or longitude is None:
-        raise GoogleMapsError("Google Maps returned no coordinates for that place")
+    if any(
+        isinstance(value, bool) or not isinstance(value, (int, float))
+        or not isfinite(value) or not -limit <= value <= limit
+        for value, limit in ((latitude, 90), (longitude, 180))
+    ):
+        raise GoogleMapsError("Google Maps returned invalid coordinates for that place")
 
     name = place_display_name(result["place_id"], api_key) if result.get("place_id") else None
     if not name and formatted_address:

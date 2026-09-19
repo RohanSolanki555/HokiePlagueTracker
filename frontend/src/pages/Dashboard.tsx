@@ -1,23 +1,41 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
 import { Activity, ArrowUpRight, MapPin, RefreshCw } from "lucide-react"
 import LocationMap from "@/components/LocationMap"
+import ReportForm from "@/components/ReportForm"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { api, type LocationMapResponse, type MapQuery } from "@/services/api"
+import { api, type CreateReportResponse, type LocationMapResponse, type MapQuery } from "@/services/api"
 
 const CAMPUS: MapQuery = { latitude: 37.2296, longitude: -80.4139, radius_km: 3, days: 7 }
 const EMPTY_LOCATIONS: LocationMapResponse["locations"] = []
 const selectClass = "h-9 w-full rounded-lg border border-input bg-background px-2 text-sm"
+
+function initialQuery(): MapQuery {
+    const params = new URLSearchParams(window.location.search)
+    const lat = params.get("latitude")
+    const lng = params.get("longitude")
+    if (!lat?.trim() || !lng?.trim()) return CAMPUS
+    const latitude = Number(lat)
+    const longitude = Number(lng)
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90
+        || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) return CAMPUS
+    return { ...CAMPUS, latitude, longitude }
+}
+
+function initialSelection() {
+    const id = Number(new URLSearchParams(window.location.search).get("location_id"))
+    return Number.isSafeInteger(id) && id > 0 ? id : null
+}
 
 function trend(value: number | null) {
     return value === null ? "New reports" : `${value > 0 ? "+" : ""}${value}%`
 }
 
 export default function Dashboard() {
-    const [query, setQuery] = useState(CAMPUS)
-    const [latitude, setLatitude] = useState(String(CAMPUS.latitude))
-    const [longitude, setLongitude] = useState(String(CAMPUS.longitude))
+    const [query, setQuery] = useState(initialQuery)
+    const [latitude, setLatitude] = useState(String(query.latitude))
+    const [longitude, setLongitude] = useState(String(query.longitude))
     const [radius, setRadius] = useState(String(CAMPUS.radius_km))
     const [days, setDays] = useState(String(CAMPUS.days))
     const [refresh, setRefresh] = useState(0)
@@ -27,7 +45,7 @@ export default function Dashboard() {
         data: LocationMapResponse | null
         error: string | null
     } | null>(null)
-    const [selectedId, setSelectedId] = useState<number | null>(null)
+    const [selectedId, setSelectedId] = useState<number | null>(initialSelection)
     const [search, setSearch] = useState("")
 
     useEffect(() => {
@@ -43,12 +61,38 @@ export default function Dashboard() {
         return () => controller.abort()
     }, [query, refresh])
 
+    useEffect(() => {
+        const refreshVisible = () => {
+            if (!document.hidden) setRefresh((value) => value + 1)
+        }
+        const timer = window.setInterval(refreshVisible, 15000)
+        window.addEventListener("focus", refreshVisible)
+        document.addEventListener("visibilitychange", refreshVisible)
+        return () => {
+            window.clearInterval(timer)
+            window.removeEventListener("focus", refreshVisible)
+            document.removeEventListener("visibilitychange", refreshVisible)
+        }
+    }, [])
+
     const selectLocation = useCallback((id: number) => setSelectedId(id), [])
     const changeCenter = useCallback((lat: number, lng: number) => {
         setLatitude(String(lat))
         setLongitude(String(lng))
         setSelectedId(null)
         setQuery((current) => ({ ...current, latitude: lat, longitude: lng }))
+    }, [])
+
+    const showSubmittedReport = useCallback(({ location }: CreateReportResponse) => {
+        setLatitude(String(location.latitude))
+        setLongitude(String(location.longitude))
+        setSelectedId(location.id)
+        setSearch("")
+        setQuery((current) => ({
+            ...current,
+            latitude: location.latitude,
+            longitude: location.longitude,
+        }))
     }, [])
 
     function applyFilters(event: FormEvent<HTMLFormElement>) {
@@ -68,7 +112,8 @@ export default function Dashboard() {
     }
 
     const loading = result?.query !== query || result?.refresh !== refresh
-    const data = loading ? null : result?.data
+    // Keep the last counts visible during refreshes of the same area.
+    const data = result?.query === query ? result.data : null
     const error = loading ? null : result?.error
     const locations = data?.locations ?? EMPTY_LOCATIONS
     const filtered = locations.filter((location) => location.name.toLowerCase().includes(search.toLowerCase()))
@@ -139,8 +184,9 @@ export default function Dashboard() {
                     </Card>)}
                 </div>
 
+                <ReportForm onSubmitted={showSubmittedReport} />
                 <LocationMap query={query} locations={locations} selectedId={selectedId} onSelect={selectLocation} onCenterChange={changeCenter} />
-                <p className="text-xs text-muted-foreground">Pin numbers show reports in the selected period. The + pin marks the search center. Select a pin or a location below to view its statistics.</p>
+                <p className="text-xs text-muted-foreground">Pin numbers show reports in the selected period and refresh every 15 seconds. The + pin marks the search center. Select a pin or a location below to view its statistics.</p>
 
                 <div className="grid items-start gap-6 lg:grid-cols-2">
                     <Card>
