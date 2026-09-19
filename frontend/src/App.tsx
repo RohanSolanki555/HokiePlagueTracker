@@ -3,7 +3,6 @@ import type { Session } from "@supabase/supabase-js"
 import Dashboard from "@/pages/Dashboard"
 import Auth from "@/pages/Auth"
 import { isVtEmail, supabase } from "@/services/auth"
-import { Button } from "@/components/ui/button"
 
 function App() {
     const [session, setSession] = useState<Session | null>(null)
@@ -49,13 +48,7 @@ function App() {
         if (result.error) setError(result.error.message)
         else window.location.assign("/login")
     }
-    return <>
-        <header className="flex flex-wrap items-center justify-end gap-4 border-b px-8 py-3">
-            <span className="text-sm">{user.email}</span><Button variant="outline" onClick={logout}>Sign out</Button>
-            {error && <p role="alert">{error}</p>}
-        </header>
-        <Dashboard />
-    </>
+    return <Dashboard email={user.email} onSignOut={logout} accountError={error} />
 }
 
 export default App

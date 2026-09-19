@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ArrowUpRight, Building2 } from "lucide-react"
+import { ArrowUpRight, Building2, Search } from "lucide-react"
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
@@ -13,9 +13,9 @@ interface Props {
     onSelect: (id: number) => void
 }
 
-const illnessChart = { reports: { label: "Reports", color: "#861f41" } } satisfies ChartConfig
-const dailyChart = { reports: { label: "Reports", color: "#e87722" } } satisfies ChartConfig
-const floorChart = { reports: { label: "Reports", color: "#861f41" } } satisfies ChartConfig
+const illnessChart = { reports: { label: "Reports", color: "#801036" } } satisfies ChartConfig
+const dailyChart = { reports: { label: "Reports", color: "#ef620f" } } satisfies ChartConfig
+const floorChart = { reports: { label: "Reports", color: "#801036" } } satisfies ChartConfig
 
 function trend(value: number | null) {
     return value === null ? "New reports" : `${value > 0 ? "+" : ""}${value}%`
@@ -67,36 +67,49 @@ export default function DormSection({ days, refresh, selectedId, onSelect }: Pro
     const detailError = selectedId === null || detailLoading ? null : detailCurrent?.error
 
     return (
-        <div className="grid items-start gap-6 lg:grid-cols-2">
-            <Card>
-                <CardHeader><CardTitle>Virginia Tech dorms</CardTitle></CardHeader>
-                <CardContent className="space-y-4">
-                    <Input aria-label="Filter dorms" placeholder="Filter dorms by name…" value={search} onChange={(event) => setSearch(event.target.value)} />
-                    {!listLoading && listCurrent?.error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm">
+        <div className="dash-dorms">
+            <Card className="dash-panel dash-dorm-panel">
+                <CardHeader className="dash-dorm-head">
+                    <span className="dash-label">Residence halls</span>
+                    <CardTitle className="dash-panel-title">Virginia Tech dorms</CardTitle>
+                    <p className="dash-panel-desc">Pick a dorm to see how many reports it has and what is going around.</p>
+                </CardHeader>
+                <CardContent className="dash-dorm-body">
+                    <div className="dash-input-wrap">
+                        <Search className="dash-input-icon" aria-hidden="true" />
+                        <Input className="dash-input" aria-label="Filter dorms" placeholder="Filter dorms by name…" value={search} onChange={(event) => setSearch(event.target.value)} />
+                    </div>
+                    {!listLoading && listCurrent?.error && <div role="alert" className="dash-feedback dash-feedback-action">
                         <span>{listCurrent.error}</span>
                     </div>}
-                    <div className="max-h-96 space-y-2 overflow-y-auto" aria-busy={listLoading}>
-                        {filtered.map((dorm) => <button key={dorm.id} type="button" aria-pressed={selectedId === dorm.id} onClick={() => onSelect(dorm.id)} className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#861f41] ${selectedId === dorm.id ? "border-[#861f41] bg-[#861f41]/5" : "border-transparent bg-zinc-50"}`}>
-                            <Building2 className="size-5 shrink-0 text-[#861f41]" />
-                            <span className="min-w-0 flex-1">
-                                <span className="block font-medium">{dorm.name}</span>
-                                {dorm.floors && <span className="text-xs text-muted-foreground">{dorm.floors} floors</span>}
+                    <div className="dash-dorm-list" aria-busy={listLoading}>
+                        {filtered.map((dorm) => <button key={dorm.id} type="button" aria-pressed={selectedId === dorm.id} onClick={() => onSelect(dorm.id)} className="dash-dorm">
+                            <span className="dash-dorm-icon"><Building2 aria-hidden="true" /></span>
+                            <span className="dash-dorm-text">
+                                <span className="dash-dorm-name">{dorm.name}</span>
+                                {dorm.floors && <span className="dash-dorm-floors">{dorm.floors} floors</span>}
                             </span>
-                            <span className="shrink-0 text-sm font-medium">{dorm.stats.total_reports} reports</span>
+                            <span className="dash-dorm-count" data-active={dorm.stats.total_reports > 0}>{dorm.stats.total_reports} reports</span>
                         </button>)}
-                        {filtered.length === 0 && !listCurrent?.error && <p className="py-6 text-sm text-muted-foreground" role="status">
+                        {filtered.length === 0 && !listCurrent?.error && <p className="dash-empty-line" role="status">
                             {listLoading && !listCurrent ? "Loading dorms…" : dorms.length ? "No dorms match that name." : "No dorms have been added yet."}
                         </p>}
                     </div>
                 </CardContent>
             </Card>
 
-            <Card>
-                <CardHeader><CardTitle>{detailData ? detailData.dorm.name : "Dorm statistics"}</CardTitle></CardHeader>
-                <CardContent>
-                    {selectedId === null && <p className="py-6 text-sm text-muted-foreground">Select a dorm from the list or the map to see its illness breakdown, daily trend, and floors.</p>}
-                    {detailError && <div role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm">{detailError}</div>}
-                    {selectedId !== null && !detailData && !detailError && <p className="py-6 text-sm text-muted-foreground" role="status">Loading dorm details…</p>}
+            <Card className="dash-panel dash-dorm-panel">
+                <CardHeader className="dash-dorm-head">
+                    <span className="dash-label">Statistics</span>
+                    <CardTitle className="dash-panel-title">{detailData ? detailData.dorm.name : "Dorm statistics"}</CardTitle>
+                </CardHeader>
+                <CardContent className="dash-dorm-body">
+                    {selectedId === null && <div className="dash-empty">
+                        <Building2 aria-hidden="true" />
+                        <p>Select a dorm from the list or the map to see its illness breakdown, daily trend, and floors.</p>
+                    </div>}
+                    {detailError && <div role="alert" className="dash-feedback dash-feedback-action"><span>{detailError}</span></div>}
+                    {selectedId !== null && !detailData && !detailError && <p className="dash-empty-line" role="status">Loading dorm details…</p>}
                     {detailData && <DormDetailView detail={detailData} />}
                 </CardContent>
             </Card>
@@ -108,59 +121,59 @@ function DormDetailView({ detail }: { detail: DormDetail }) {
     const { stats, dorm } = detail
     const empty = stats.total_reports === 0
     return (
-        <div className="space-y-6" aria-live="polite">
-            <dl className="grid grid-cols-2 gap-5">
+        <div className="dash-detail" aria-live="polite">
+            <dl className="dash-tiles">
                 {[
                     ["Reports today", stats.reports_today],
                     [`Reports in ${detail.days} days`, stats.total_reports],
                     ["Average severity", stats.average_severity?.toFixed(2) ?? "No scores"],
                     ["Change from prior period", trend(stats.change_percent)],
-                ].map(([label, value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 text-xl font-semibold">{value}</dd></div>)}
+                ].map(([label, value]) => <div key={label} className="dash-tile"><dt>{label}</dt><dd>{value}</dd></div>)}
             </dl>
-            <p className="text-xs text-muted-foreground">{stats.latest_report_at ? `Latest report: ${new Date(stats.latest_report_at).toLocaleString()}` : "No reports during this period."}</p>
+            <p className="dash-latest">{stats.latest_report_at ? `Latest report: ${new Date(stats.latest_report_at).toLocaleString()}` : "No reports during this period."}</p>
 
             {!empty && <>
-                <section aria-label="Illnesses reported" className="space-y-2">
-                    <h3 className="text-sm font-medium">Illnesses reported</h3>
+                <section aria-label="Illnesses reported" className="dash-chart">
+                    <h3>Illnesses reported</h3>
                     <ChartContainer config={illnessChart} className="w-full" style={{ height: Math.max(120, detail.illnesses.length * 36 + 24), aspectRatio: "auto" }}>
                         <BarChart data={detail.illnesses} layout="vertical" margin={{ left: 8, right: 16 }}>
                             <CartesianGrid horizontal={false} />
                             <YAxis dataKey="illness" type="category" tickLine={false} axisLine={false} width={140} />
                             <XAxis type="number" allowDecimals={false} />
                             <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-                            <Bar dataKey="reports" fill="var(--color-reports)" radius={4} />
+                            <Bar dataKey="reports" fill="var(--color-reports)" radius={6} />
                         </BarChart>
                     </ChartContainer>
                 </section>
 
-                <section aria-label="Reports per day" className="space-y-2">
-                    <h3 className="text-sm font-medium">Reports per day</h3>
+                <section aria-label="Reports per day" className="dash-chart">
+                    <h3>Reports per day</h3>
                     <ChartContainer config={dailyChart} className="h-48 w-full" style={{ aspectRatio: "auto" }}>
                         <BarChart data={detail.daily} margin={{ left: 0, right: 8 }}>
                             <CartesianGrid vertical={false} />
                             <XAxis dataKey="date" tickLine={false} axisLine={false} tickFormatter={shortDate} interval="preserveStartEnd" />
                             <YAxis allowDecimals={false} width={28} tickLine={false} axisLine={false} />
                             <ChartTooltip cursor={false} content={<ChartTooltipContent labelFormatter={(_label, payload) => shortDate(String(payload?.[0]?.payload?.date ?? ""))} />} />
-                            <Bar dataKey="reports" fill="var(--color-reports)" radius={4} />
+                            <Bar dataKey="reports" fill="var(--color-reports)" radius={6} />
                         </BarChart>
                     </ChartContainer>
                 </section>
 
-                {detail.floors.length > 0 && <section aria-label="Reports by floor" className="space-y-2">
-                    <h3 className="text-sm font-medium">Reports by floor</h3>
+                {detail.floors.length > 0 && <section aria-label="Reports by floor" className="dash-chart">
+                    <h3>Reports by floor</h3>
                     <ChartContainer config={floorChart} className="h-52 w-full" style={{ aspectRatio: "auto" }}>
                         <BarChart data={detail.floors} margin={{ left: 0, right: 8, bottom: 12 }}>
                             <CartesianGrid vertical={false} />
                             <XAxis dataKey="floor" tickLine={false} axisLine={false} label={{ value: "Floor", position: "insideBottom", offset: -2 }} height={40} />
                             <YAxis allowDecimals={false} width={28} tickLine={false} axisLine={false} />
                             <ChartTooltip cursor={false} content={<ChartTooltipContent labelFormatter={(_label, payload) => `Floor ${payload?.[0]?.payload?.floor ?? ""}`} />} />
-                            <Bar dataKey="reports" fill="var(--color-reports)" radius={4} />
+                            <Bar dataKey="reports" fill="var(--color-reports)" radius={6} />
                         </BarChart>
                     </ChartContainer>
                 </section>}
             </>}
 
-            {dorm.latitude !== null && dorm.longitude !== null && <a className="inline-flex items-center gap-1 text-sm font-medium text-[#861f41] underline underline-offset-4" href={`https://www.google.com/maps/search/?api=1&query=${dorm.latitude},${dorm.longitude}`} target="_blank" rel="noopener noreferrer">Open in Google Maps <ArrowUpRight className="size-4" /></a>}
+            {dorm.latitude !== null && dorm.longitude !== null && <a className="dash-link dash-detail-link" href={`https://www.google.com/maps/search/?api=1&query=${dorm.latitude},${dorm.longitude}`} target="_blank" rel="noopener noreferrer">Open in Google Maps <ArrowUpRight aria-hidden="true" /></a>}
         </div>
     )
 }

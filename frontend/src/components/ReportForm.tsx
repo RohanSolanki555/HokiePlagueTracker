@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react"
+import { ArrowRight, Building2, CheckCircle2, CircleAlert, House, LoaderCircle, MapPin, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { api, type CreateReportRequest, type DormSummary } from "@/services/api"
 
 const ADDRESS_SUFFIX = ", Blacksburg, VA"
@@ -19,8 +19,6 @@ const illnesses = [
     "Sinus infection",
     "Other",
 ]
-
-const selectClass = "block h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
 
 export interface SubmittedReport {
     dormId: number | null
@@ -105,106 +103,112 @@ export default function ReportForm({ onSubmitted }: Props) {
     }
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Report an illness</CardTitle>
-            </CardHeader>
-            <CardContent>
-                <form onSubmit={submit} className="space-y-4" aria-busy={submitting}>
-                    <p className="text-sm text-muted-foreground">
-                        Dorm reports count toward your dorm's statistics. Off-campus addresses are used once to find your general area, are never stored, and appear on the map only as an unclickable approximate dot.
-                    </p>
-                    <fieldset disabled={submitting} className="grid gap-4 sm:grid-cols-2">
-                        <div className="space-y-2 sm:col-span-2">
-                            <span id="report-residence-label" className="text-sm font-medium">Where are you staying?</span>
-                            <div role="radiogroup" aria-labelledby="report-residence-label" className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
-                                <label className="flex items-center gap-2">
-                                    <input type="radio" name="residence" value="dorm" checked={residence === "dorm"} onChange={() => setResidence("dorm")} />
-                                    On-campus dorm
-                                </label>
-                                <label className="flex items-center gap-2">
-                                    <input type="radio" name="residence" value="home" checked={residence === "home"} onChange={() => setResidence("home")} />
-                                    Off campus
-                                </label>
-                            </div>
+        <section className="dash-panel dash-report" aria-labelledby="report-title">
+            <span className="dash-label">Help your fellow Hokies</span>
+            <h2 className="dash-panel-title" id="report-title">Report an illness</h2>
+            <p className="dash-panel-desc">Dorm reports count toward your dorm's statistics.</p>
+
+            <form onSubmit={submit} className="dash-report-form" aria-busy={submitting}>
+                <fieldset disabled={submitting} className="dash-form-fields">
+                    <div className="dash-field dash-span">
+                        <span id="report-residence-label" className="dash-field-label">Where are you staying?</span>
+                        <div role="radiogroup" aria-labelledby="report-residence-label" className="dash-segment">
+                            <label className="dash-segment-option">
+                                <input type="radio" name="residence" value="dorm" checked={residence === "dorm"} onChange={() => setResidence("dorm")} />
+                                <Building2 aria-hidden="true" />
+                                On-campus dorm
+                            </label>
+                            <label className="dash-segment-option">
+                                <input type="radio" name="residence" value="home" checked={residence === "home"} onChange={() => setResidence("home")} />
+                                <House aria-hidden="true" />
+                                Off campus
+                            </label>
                         </div>
-                        {residence === "dorm" ? <>
-                            <div className="space-y-2">
-                                <label htmlFor="report-dorm" className="text-sm font-medium">Dorm</label>
-                                <select id="report-dorm" name="dorm_id" required value={dormId} className={selectClass}
-                                    onChange={(event) => { setDormId(event.target.value); setFloor("") }}>
-                                    <option value="" disabled>{dormsError ? "Dorms could not load" : dorms.length ? "Select your dorm" : "Loading dorms…"}</option>
-                                    {dorms.map((dorm) => <option key={dorm.id} value={dorm.id}>{dorm.name}</option>)}
-                                </select>
-                            </div>
-                            <div className="space-y-2">
-                                <label htmlFor="report-floor" className="text-sm font-medium">Floor</label>
-                                {selectedDorm && !selectedDorm.floors
-                                    ? <Input id="report-floor" name="floor" type="number" min={1} max={60} step={1} required value={floor}
-                                        onChange={(event) => setFloor(event.target.value)} />
-                                    : <select id="report-floor" name="floor" required value={floor} disabled={!selectedDorm} className={selectClass}
-                                        onChange={(event) => setFloor(event.target.value)}>
-                                        <option value="" disabled>{selectedDorm ? "Select your floor" : "Choose a dorm first"}</option>
-                                        {Array.from({ length: selectedDorm?.floors ?? 0 }, (_, index) => index + 1)
-                                            .map((number) => <option key={number} value={number}>Floor {number}</option>)}
-                                    </select>}
-                            </div>
-                        </> : (
-                            <div className="space-y-2 sm:col-span-2">
-                                <label htmlFor="report-address" className="text-sm font-medium">Street address</label>
-                                <div className="flex items-center gap-2">
-                                    <Input id="report-address" name="address" autoComplete="address-line1"
-                                        placeholder="225 Stanger St" aria-describedby="report-city"
-                                        required maxLength={500 - ADDRESS_SUFFIX.length} value={address}
-                                        onChange={(event) => setAddress(event.target.value)} />
-                                    <span id="report-city" className="shrink-0 whitespace-nowrap text-sm text-muted-foreground">Blacksburg, VA</span>
-                                </div>
-                            </div>
-                        )}
-                        <div className="space-y-2">
-                            <label htmlFor="report-illness" className="text-sm font-medium">Illness</label>
-                            <select id="report-illness" name="illness" required value={illness}
-                                onChange={(event) => {
-                                    setIllness(event.target.value)
-                                    setFluType("")
-                                }}
-                                className={selectClass}>
-                                <option value="" disabled>Select an illness</option>
-                                {illnesses.map((name) => <option key={name} value={name}>{name}</option>)}
+                    </div>
+
+                    {residence === "dorm" ? <>
+                        <div className="dash-field">
+                            <label htmlFor="report-dorm">Dorm</label>
+                            <select id="report-dorm" name="dorm_id" required value={dormId} className="dash-select"
+                                onChange={(event) => { setDormId(event.target.value); setFloor("") }}>
+                                <option value="" disabled>{dormsError ? "Dorms could not load" : dorms.length ? "Select your dorm" : "Loading dorms…"}</option>
+                                {dorms.map((dorm) => <option key={dorm.id} value={dorm.id}>{dorm.name}</option>)}
                             </select>
                         </div>
-                        {illness === "Flu" && (
-                            <div className="space-y-2">
-                                <label htmlFor="report-flu-type" className="text-sm font-medium">Flu type (optional)</label>
-                                <select id="report-flu-type" name="flu_type" value={fluType}
-                                    onChange={(event) => setFluType(event.target.value as "" | "A" | "B")}
-                                    className={selectClass}>
-                                    <option value="">Not sure / unspecified</option>
-                                    <option value="A">Flu A</option>
-                                    <option value="B">Flu B</option>
-                                </select>
+                        <div className="dash-field">
+                            <label htmlFor="report-floor">Floor</label>
+                            {selectedDorm && !selectedDorm.floors
+                                ? <Input id="report-floor" name="floor" type="number" min={1} max={60} step={1} required value={floor} className="dash-input"
+                                    onChange={(event) => setFloor(event.target.value)} />
+                                : <select id="report-floor" name="floor" required value={floor} disabled={!selectedDorm} className="dash-select"
+                                    onChange={(event) => setFloor(event.target.value)}>
+                                    <option value="" disabled>Select floor</option>
+                                    {Array.from({ length: selectedDorm?.floors ?? 0 }, (_, index) => index + 1)
+                                        .map((number) => <option key={number} value={number}>Floor {number}</option>)}
+                                </select>}
+                        </div>
+                    </> : (
+                        <div className="dash-field dash-span">
+                            <label htmlFor="report-address">Street address</label>
+                            <div className="dash-input-wrap dash-input-wrap-suffix">
+                                <MapPin className="dash-input-icon" aria-hidden="true" />
+                                <Input id="report-address" name="address" autoComplete="address-line1" className="dash-input"
+                                    placeholder="225 Stanger St" aria-describedby="report-city"
+                                    required maxLength={500 - ADDRESS_SUFFIX.length} value={address}
+                                    onChange={(event) => setAddress(event.target.value)} />
+                                <span id="report-city" className="dash-input-suffix">Blacksburg, VA</span>
                             </div>
-                        )}
-                        <div className="space-y-2">
-                            <label htmlFor="report-severity" className="text-sm font-medium">Severity</label>
-                            <select id="report-severity" name="severity" value={severity}
-                                onChange={(event) => setSeverity(event.target.value)}
-                                className={selectClass}>
-                                <option value="1">1 — Very mild</option>
-                                <option value="2">2 — Mild</option>
-                                <option value="3">3 — Moderate</option>
-                                <option value="4">4 — Severe</option>
-                                <option value="5">5 — Very severe</option>
+                        </div>
+                    )}
+
+                    <div className="dash-field dash-span">
+                        <label htmlFor="report-illness">Illness</label>
+                        <select id="report-illness" name="illness" required value={illness} className="dash-select"
+                            onChange={(event) => {
+                                setIllness(event.target.value)
+                                setFluType("")
+                            }}>
+                            <option value="" disabled>Select an illness</option>
+                            {illnesses.map((name) => <option key={name} value={name}>{name}</option>)}
+                        </select>
+                    </div>
+                    {illness === "Flu" && (
+                        <div className="dash-field dash-span">
+                            <label htmlFor="report-flu-type">Flu type (optional)</label>
+                            <select id="report-flu-type" name="flu_type" value={fluType} className="dash-select"
+                                onChange={(event) => setFluType(event.target.value as "" | "A" | "B")}>
+                                <option value="">Not sure / unspecified</option>
+                                <option value="A">Flu A</option>
+                                <option value="B">Flu B</option>
                             </select>
                         </div>
-                        <Button type="submit" disabled={submitting} className="bg-[#861f41] hover:bg-[#6b1934] sm:col-span-2 sm:justify-self-start">
-                            {submitting ? "Submitting..." : "Submit report"}
-                        </Button>
-                    </fieldset>
-                    {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-                    {success && <p role="status" className="text-sm">{success}</p>}
-                </form>
-            </CardContent>
-        </Card>
+                    )}
+                    <div className="dash-field dash-span">
+                        <label htmlFor="report-severity">Severity</label>
+                        <select id="report-severity" name="severity" value={severity} className="dash-select"
+                            onChange={(event) => setSeverity(event.target.value)}>
+                            <option value="1">1 — Very mild</option>
+                            <option value="2">2 — Mild</option>
+                            <option value="3">3 — Moderate</option>
+                            <option value="4">4 — Severe</option>
+                            <option value="5">5 — Very severe</option>
+                        </select>
+                    </div>
+
+                    <Button type="submit" disabled={submitting} className="dash-submit dash-span">
+                        <span>{submitting ? "Submitting..." : "Submit report"}</span>
+                        {submitting ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <ArrowRight aria-hidden="true" />}
+                    </Button>
+                </fieldset>
+
+                {error && <div role="alert" className="dash-feedback"><CircleAlert aria-hidden="true" /><p>{error}</p></div>}
+                {success && <div role="status" className="dash-feedback dash-feedback-success"><CheckCircle2 aria-hidden="true" /><p>{success}</p></div>}
+            </form>
+
+            <p className="dash-report-note">
+                <ShieldCheck aria-hidden="true" />
+                <span>Off-campus addresses are used once to find your general area, are never stored, and appear on the map only as an unclickable approximate dot.</span>
+            </p>
+        </section>
     )
 }

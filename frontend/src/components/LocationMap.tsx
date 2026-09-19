@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { MapPin } from "lucide-react"
+import { MapPin, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { loadGoogleMaps, mapsApiKey, mapsMapId } from "@/lib/google-maps"
 import type { HomeArea, MapLocation, MapQuery } from "@/services/api"
@@ -65,8 +65,8 @@ export default function LocationMap({ query, locations, homeAreas, selectedId, o
         const center = { lat: query.latitude, lng: query.longitude }
         const circle = new runtime.maps.Circle({
             map: runtime.map, center, radius: query.radius_km * 1000,
-            fillColor: "#861f41", fillOpacity: 0.06,
-            strokeColor: "#861f41", strokeOpacity: 0.6, strokeWeight: 1.5,
+            fillColor: "#801036", fillOpacity: 0.06,
+            strokeColor: "#801036", strokeOpacity: 0.6, strokeWeight: 1.5,
             clickable: false,
         })
         const bounds = circle.getBounds()
@@ -96,8 +96,8 @@ export default function LocationMap({ query, locations, homeAreas, selectedId, o
                 gmpClickable: true,
             })
             marker.append(new runtime.marker.PinElement({
-                background: selected ? "#e87722" : "#861f41",
-                borderColor: selected ? "#a84b0b" : "#5e162e", glyphColor: "#ffffff",
+                background: selected ? "#ef620f" : "#801036",
+                borderColor: selected ? "#a64108" : "#5a0b26", glyphColor: "#ffffff",
                 glyphText: String(location.stats.total_reports), scale: selected ? 1.2 : 1,
             }))
             const listener = () => onSelect(location.id)
@@ -124,7 +124,7 @@ export default function LocationMap({ query, locations, homeAreas, selectedId, o
             marker.style.pointerEvents = "none"
             marker.setAttribute("aria-hidden", "true")
             marker.append(new runtime.marker.PinElement({
-                background: "#71717a", borderColor: "#52525b", glyphColor: "#71717a", scale: 0.7,
+                background: "#e87722", borderColor: "#a84b08", glyphColor: "#e87722", scale: 0.7,
             }))
             return marker
         })
@@ -134,24 +134,22 @@ export default function LocationMap({ query, locations, homeAreas, selectedId, o
     const unavailable = !mapsApiKey || error
 
     return (
-        <div className="relative min-h-[440px] overflow-hidden rounded-xl border bg-muted/40 sm:min-h-[540px]">
-            <div ref={container} className="absolute inset-0" aria-label="Map of nearby report locations" />
+        <div className="dash-map">
+            <div ref={container} className="dash-map-canvas" aria-label="Map of nearby report locations" />
             {unavailable ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-8 text-center" role="status">
-                    <MapPin className="size-9 text-muted-foreground" />
-                    <p className="font-medium">Map unavailable</p>
-                    <p className="max-w-sm text-sm text-muted-foreground">
-                        {error || "Map access has not been configured."} Location statistics are still available below.
-                    </p>
-                    {error && <Button variant="outline" onClick={() => window.location.reload()}>Reload map</Button>}
+                <div className="dash-map-fallback" role="status">
+                    <span className="dash-map-fallback-icon"><MapPin aria-hidden="true" /></span>
+                    <h3>Map unavailable</h3>
+                    <p>{error || "Map access has not been configured."} Location statistics are still available below.</p>
+                    {error && <Button variant="outline" className="dash-btn-outline" onClick={() => window.location.reload()}>Reload map</Button>}
                 </div>
             ) : !runtime ? (
-                <div className="absolute inset-0 grid place-items-center text-sm text-muted-foreground" role="status">Loading Google Maps…</div>
+                <div className="dash-map-fallback dash-map-loading" role="status">Loading Google Maps…</div>
             ) : (
-                <Button className="absolute top-4 left-1/2 -translate-x-1/2 bg-white text-zinc-900 shadow-md hover:bg-zinc-100" onClick={() => {
+                <Button className="dash-search-area" onClick={() => {
                     const center = runtime.map.getCenter()
                     if (center) onCenterChange(center.lat(), center.lng())
-                }}>Search this area</Button>
+                }}><Search aria-hidden="true" /> Search this area</Button>
             )}
         </div>
     )
