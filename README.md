@@ -1,2 +1,2 @@
 # HokiePlagueTracker
-Tracks illness in virginia tech students across blacksburg
+Tracks illness in virginia tech students across Blacksburg, Virginia
