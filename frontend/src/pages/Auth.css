@@ -178,6 +178,34 @@
     .auth-access-note { margin-top: 24px; padding-top: 20px; }
 }
 
+/* Keep the two-field login form comfortable on shorter screens. */
+.auth-page-login .auth-content { padding-block: clamp(20px, 4svh, 40px); }
+.auth-page-login .auth-section-label { margin-bottom: 12px; }
+.auth-page-login .auth-description { margin-block: 10px 22px; }
+.auth-page-login .auth-fields { gap: 16px; }
+.auth-page-login .auth-account-nav { margin-top: 20px; }
+.auth-page-login .auth-access-note { margin-top: 18px; padding-top: 16px; }
+
+@media (max-height: 800px) and (min-width: 721px) {
+    .auth-page-login { padding: 16px; }
+    .auth-page-login .auth-shell { min-height: calc(100svh - 32px); }
+    .auth-page-login .auth-story { gap: 20px; padding-block: 28px; }
+    .auth-page-login .auth-story-copy { padding-block: 0; }
+    .auth-page-login .auth-story h2 { font-size: clamp(32px, 6svh, 48px); }
+    .auth-page-login .auth-story-description { margin-top: 16px; }
+}
+
+@media (max-width: 720px) {
+    .auth-page-login .auth-story { padding-block: 16px; gap: 12px; }
+    .auth-page-login .auth-content { padding-block: 22px; }
+}
+
+@media (max-width: 720px) and (max-height: 800px) {
+    .auth-page-login .auth-story-copy { display: none; }
+    .auth-page-login .auth-section-label { display: none; }
+    .auth-page-login .auth-title { font-size: 28px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .auth-page *, .auth-page *::before, .auth-page *::after { transition: none !important; animation: none !important; }
 }

@@ -72,7 +72,7 @@ export default function Auth({ mode, user, initialError = "" }: { mode: Mode; us
     }
 
     return (
-        <main className="auth-page">
+        <main className={`auth-page${mode === "login" ? " auth-page-login" : ""}`}>
             <div className="auth-shell">
                 <aside className="auth-story" aria-label="Hokie Plague Tracker">
                     <a className="auth-brand" href="/" aria-label="Hokie Plague Tracker home">
