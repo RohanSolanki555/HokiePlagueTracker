@@ -58,11 +58,11 @@ export default function Auth({ mode, user, initialError = "" }: { mode: Mode; us
             } else if (mode === "signup") {
                 const result = await supabase.auth.signInWithOtp({ email: normalizedEmail, options: { emailRedirectTo: `${window.location.origin}/auth/setup` } })
                 if (result.error) throw result.error
-                setMessage(`Check ${normalizedEmail} for your verification link. Click it to create your password. You can resend using the button below.`)
+                setMessage(`Check ${normalizedEmail} for your verification link. If you don't see it in your inbox, check Virginia Tech Microsoft 365 Quarantine`)
             } else {
                 const result = await supabase.auth.resetPasswordForEmail(normalizedEmail, { redirectTo: `${window.location.origin}/auth/reset` })
                 if (result.error) throw result.error
-                setMessage("If an account exists for that email, a password reset link has been sent.")
+                setMessage("If an account exists for that email, a password reset link has been sent. If you don't see it in your inbox, check Virginia Tech Microsoft 365 Quarantine")
             }
         } catch (error) {
             setError(error instanceof Error ? error.message : "Something went wrong. Please try again.")
