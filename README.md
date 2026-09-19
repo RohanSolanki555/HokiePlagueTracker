@@ -16,7 +16,11 @@ Start the backend from `backend/` with `python run.py` after installing
 `requirements.txt`. Start the frontend from `frontend/` with `npm install`
 and `npm run dev`.
 
-The dashboard form saves an address, an illness selected from a dropdown, and
+Use the dashboard's **Report an illness** button to open `/report`.
+The report page includes a **Back to dashboard** link. When deploying, configure
+the frontend host to serve `index.html` for `/report` (Vite handles this locally).
+
+The report form saves an address, an illness selected from a dropdown, and
 severity (1–5) through `POST /api/reports`. `location_id` is optional and
 refers to an existing location category. The selected illness name is stored on
 the report; it does not populate the `report_symptoms` join table.

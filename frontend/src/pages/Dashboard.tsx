@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import ReportForm from "@/components/ReportForm"
+import { buttonVariants } from "@/components/ui/button"
 
 export default function Dashboard() {
     return (
@@ -14,6 +14,9 @@ export default function Dashboard() {
                     <p className="text-muted-foreground">
                         View recent illness trends around campus.
                     </p>
+                    <a href="/report" className={buttonVariants({ className: "mt-4" })}>
+                        Report an illness
+                    </a>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-3">
@@ -62,7 +65,6 @@ export default function Dashboard() {
 
                 </div>
 
-                <ReportForm />
             </div>
         </main>
     )
