@@ -200,3 +200,9 @@ def test_database_failure_when_saving_returns_503(monkeypatch):
     response = post("pin", {"latitude": 1, "longitude": 1})
     assert response.status_code == 503
     assert "private" not in response.json["error"]
+
+
+@pytest.fixture(autouse=True)
+def authenticated_route_tests(monkeypatch):
+    # These tests cover map/pin behavior; test_auth.py exercises the real auth guard.
+    monkeypatch.setattr("app.require_verified_user", lambda: None)

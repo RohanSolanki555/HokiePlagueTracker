@@ -13,7 +13,6 @@ const selectClass = "h-9 w-full rounded-lg border border-input bg-background px-
 function trend(value: number | null) {
     return value === null ? "New reports" : `${value > 0 ? "+" : ""}${value}%`
 }
-import ReportForm from "@/components/ReportForm"
 
 export default function Dashboard() {
     const [query, setQuery] = useState(CAMPUS)

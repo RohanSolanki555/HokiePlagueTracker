@@ -1,3 +1,5 @@
+import { supabase } from "./auth"
+
 const API_URL = (
     import.meta.env.VITE_API_URL ??
     "http://localhost:5000/api"
@@ -8,12 +10,14 @@ async function request<T>(
     endpoint: string,
     options?: RequestInit
 ): Promise<T> {
+    const session = supabase ? (await supabase.auth.getSession()).data.session : null
     const response = await fetch(
         `${API_URL}${endpoint}`,
         {
             ...options,
             headers: {
                 "Content-Type": "application/json",
+                ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
                 ...options?.headers,
             },
         }

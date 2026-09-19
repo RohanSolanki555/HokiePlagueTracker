@@ -193,3 +193,9 @@ def test_summary_endpoint_uses_database_counts(monkeypatch):
     assert response.status_code == 200
     assert response.json["reports_this_week"] == 1
     assert response.json["weekly_change"] is None
+
+
+@pytest.fixture(autouse=True)
+def authenticated_route_tests(monkeypatch):
+    # These tests cover map/pin behavior; test_auth.py exercises the real auth guard.
+    monkeypatch.setattr("app.require_verified_user", lambda: None)

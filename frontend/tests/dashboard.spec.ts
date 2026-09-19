@@ -1,3 +1,4 @@
+import { mockSignedIn } from "./auth-helper"
 import { expect, test } from "@playwright/test"
 import { mapData, mockData } from "./fixtures"
 
@@ -56,3 +57,5 @@ test("mobile layout fits the viewport", async ({ page }) => {
     await expect(page.getByRole("link", { name: "Open in Google Maps" })).toBeVisible()
     await page.screenshot({ path: test.info().outputPath("dashboard-mobile.png"), fullPage: true })
 })
+
+ test.beforeEach(async ({ page }) => { await mockSignedIn(page) })

@@ -1,3 +1,4 @@
+import { mockSignedIn } from "./auth-helper"
 import { expect, test } from "@playwright/test"
 import { mapData, mockData, mockGoogleMaps } from "./fixtures"
 
@@ -54,3 +55,5 @@ test("Google authorization failures leave statistics accessible", async ({ page 
     await page.getByRole("button", { name: /Squires Student Center.*km away/ }).click()
     await expect(page.getByText("No reports during this period.")).toBeVisible()
 })
+
+ test.beforeEach(async ({ page }) => { await mockSignedIn(page) })
