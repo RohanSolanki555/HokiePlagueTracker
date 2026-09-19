@@ -101,6 +101,18 @@ def summarize_reports(reports, now, days):
     }
 
 
+def save_pinned_location(supabase, metadata):
+    """Insert a pinned location, or return the existing row for the same Google place."""
+    place_id = metadata.get("place_id")
+    if place_id:
+        existing = (
+            supabase.table("locations").select("*").eq("place_id", place_id).limit(1).execute().data
+        )
+        if existing:
+            return existing[0], False
+    return supabase.table("locations").insert(metadata).execute().data[0], True
+
+
 def get_map_data(supabase, latitude, longitude, radius_km, days, now=None):
     now = now or datetime.now(timezone.utc)
     locations = []
