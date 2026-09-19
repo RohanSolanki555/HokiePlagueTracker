@@ -2,6 +2,8 @@ import { mockSignedIn } from "./auth-helper"
 import { expect, test } from "@playwright/test"
 import { mapData, mockData, mockGoogleMaps } from "./fixtures"
 
+test.beforeEach(async ({ page }) => { await mockSignedIn(page) })
+
 test("a failed Google script loads once and does not block location data", async ({ page }) => {
     let scripts = 0
     await page.route("https://maps.googleapis.com/maps/api/js?*", (route) => {
@@ -96,7 +98,7 @@ test("reports at one address increment its pin and counters and survive reload",
     await page.getByRole("button", { name: "Update map", exact: true }).click()
     await expect(page.getByText("2 saved locations")).toBeVisible()
     await page.getByLabel("Filter nearby locations").fill("no match")
-    await page.getByLabel("Street address", { exact: true }).fill(" 100 Test Lane, Blacksburg, VA ")
+    await page.getByLabel("Street address", { exact: true }).fill(" 100 Test Lane ")
     await page.getByLabel("Illness", { exact: true }).selectOption("Common cold")
 
     const request = page.waitForRequest((request) => request.url().includes("/locations/map?latitude=37.3&longitude=-80.45"))
@@ -121,7 +123,7 @@ test("reports at one address increment its pin and counters and survive reload",
     await expect(total.getByText("1", { exact: true })).toBeVisible()
     await expect(today.getByText("1", { exact: true })).toBeVisible()
 
-    await page.getByLabel("Street address", { exact: true }).fill("100 Test Lane, Blacksburg, VA")
+    await page.getByLabel("Street address", { exact: true }).fill("100 Test Lane")
     await page.getByLabel("Illness", { exact: true }).selectOption("Common cold")
     await page.getByRole("button", { name: "Submit report", exact: true }).click()
     const updatedPin = page.getByRole("button", { name: "100 Test Lane: 2 reports", exact: true })

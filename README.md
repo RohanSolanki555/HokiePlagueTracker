@@ -167,11 +167,8 @@ Start the backend from `backend/` with `python run.py` after installing
 `requirements.txt`. Start the frontend from `frontend/` with `npm install`
 and `npm run dev`.
 
-Use the **Report an illness** form directly above the dashboard map, or visit
-`/report`. The separate report page includes a **Back to dashboard** link and,
-after saving, a **View report on map** link that centers and selects the reported
-location. When deploying, configure the frontend host to serve `index.html` for
-`/report` (Vite handles this locally).
+Use the **Report an illness** form directly above the dashboard map.
+After saving, the dashboard centers and selects the reported location.
 
 The report form saves an address, an illness selected from a dropdown, and
 severity (1–5) through `POST /api/reports`. The backend resolves the address and

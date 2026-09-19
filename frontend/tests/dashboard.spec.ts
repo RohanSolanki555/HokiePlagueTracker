@@ -2,6 +2,8 @@ import { mockSignedIn } from "./auth-helper"
 import { expect, test } from "@playwright/test"
 import { mapData, mockData } from "./fixtures"
 
+test.beforeEach(async ({ page }) => { await mockSignedIn(page) })
+
 test("statistics and selection work without a Google key", async ({ page }) => {
     await mockData(page)
     await page.goto("/")
@@ -91,13 +93,13 @@ for (const failure of [
         const total = page.locator('[data-slot="card"]').filter({
             has: page.locator('[data-slot="card-title"]').filter({ hasText: /^Reports in 7 days$/ }),
         })
-        await page.getByLabel("Street address", { exact: true }).fill("560 Drillfield Dr, Blacksburg, VA")
+        await page.getByLabel("Street address", { exact: true }).fill("560 Drillfield Dr")
         await page.getByLabel("Illness", { exact: true }).selectOption("Flu")
         await page.getByLabel("Flu type (optional)").selectOption("A")
         await page.getByLabel("Severity", { exact: true }).selectOption("4")
         await page.getByRole("button", { name: "Submit report", exact: true }).click()
         await expect(page.getByRole("alert")).toHaveText(failure.error)
-        await expect(page.getByLabel("Street address", { exact: true })).toHaveValue("560 Drillfield Dr, Blacksburg, VA")
+        await expect(page.getByLabel("Street address", { exact: true })).toHaveValue("560 Drillfield Dr")
         await expect(page.getByLabel("Illness", { exact: true })).toHaveValue("Flu")
         await expect(page.getByLabel("Flu type (optional)")).toHaveValue("A")
         await expect(page.getByLabel("Severity", { exact: true })).toHaveValue("4")
@@ -125,7 +127,7 @@ test("the report form prevents repeat submissions while saving", async ({ page }
         await route.fulfill({ status: 503, json: { error: "Please try again." } })
     })
     await page.goto("/")
-    await page.getByLabel("Street address", { exact: true }).fill("560 Drillfield Dr, Blacksburg, VA")
+    await page.getByLabel("Street address", { exact: true }).fill("560 Drillfield Dr")
     await page.getByLabel("Illness", { exact: true }).selectOption("Common cold")
     const request = page.waitForRequest("**/api/reports")
     await page.getByRole("button", { name: "Submit report", exact: true }).click()
@@ -150,14 +152,14 @@ test("an illness is required before a report can be sent", async ({ page }) => {
         return route.fulfill({ status: 503, json: { error: "Unexpected submission." } })
     })
     await page.goto("/")
-    await page.getByLabel("Street address", { exact: true }).fill("560 Drillfield Dr, Blacksburg, VA")
+    await page.getByLabel("Street address", { exact: true }).fill("560 Drillfield Dr")
     await page.getByRole("button", { name: "Submit report", exact: true }).click()
     await expect(page.getByLabel("Illness", { exact: true })).toBeFocused()
     expect(await page.getByLabel("Illness", { exact: true }).evaluate((element) => (element as HTMLSelectElement).validity.valueMissing)).toBe(true)
     expect(submissions).toBe(0)
 })
 
-test("the standalone report form resets flu type and links to the reported location", async ({ page }) => {
+test("the dashboard report form resets flu type and selects the reported location", async ({ page }) => {
     await mockData(page)
     await page.route("**/api/reports", (route) => {
         expect(route.request().postDataJSON()).toEqual({
@@ -168,8 +170,8 @@ test("the standalone report form resets flu type and links to the reported locat
             location: mapData.locations[0],
         } })
     })
-    await page.goto("/report")
-    await page.getByLabel("Street address", { exact: true }).fill(" 560 Drillfield Dr, Blacksburg, VA ")
+    await page.goto("/")
+    await page.getByLabel("Street address", { exact: true }).fill(" 560 Drillfield Dr ")
     await page.getByLabel("Illness", { exact: true }).selectOption("Flu")
     await page.getByLabel("Flu type (optional)").selectOption("A")
     await page.getByLabel("Illness", { exact: true }).selectOption("Common cold")
@@ -179,14 +181,10 @@ test("the standalone report form resets flu type and links to the reported locat
     await page.getByLabel("Flu type (optional)").selectOption("B")
     await page.getByLabel("Severity", { exact: true }).selectOption("2")
     await page.getByRole("button", { name: "Submit report", exact: true }).click()
-    await expect(page.getByRole("status")).toHaveText("Your report was saved for Newman Library.")
+    await expect(page.getByRole("status").filter({ hasText: "Your report was saved for Newman Library." })).toBeVisible()
     await expect(page.getByLabel("Street address", { exact: true })).toHaveValue("")
     await expect(page.getByLabel("Illness", { exact: true })).toHaveValue("")
     await expect(page.getByLabel("Severity", { exact: true })).toHaveValue("3")
-    const link = page.getByRole("link", { name: "View report on map" })
-    const target = new URL((await link.getAttribute("href"))!, "http://localhost")
-    expect(Object.fromEntries(target.searchParams)).toEqual({ latitude: "37.2284", longitude: "-80.4198", location_id: "42" })
-    await link.click()
     await expect(page.getByLabel("Latitude", { exact: true })).toHaveValue("37.2284")
     await expect(page.getByLabel("Longitude", { exact: true })).toHaveValue("-80.4198")
     await expect(page.getByRole("button", { name: /Newman Library/ })).toHaveAttribute("aria-pressed", "true")

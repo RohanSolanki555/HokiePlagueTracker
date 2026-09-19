@@ -4,6 +4,8 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { api, type CreateReportResponse } from "@/services/api"
 
+const ADDRESS_SUFFIX = ", Blacksburg, VA"
+
 const illnesses = [
     "Common cold",
     "COVID-19",
@@ -43,7 +45,7 @@ export default function ReportForm({ onSubmitted }: Props) {
         setSubmitting(true)
         try {
             const saved = await api.createReport({
-                address: address.trim(),
+                address: `${address.trim()}${ADDRESS_SUFFIX}`,
                 illness: illness.trim(),
                 flu_type: illness === "Flu" && fluType ? fluType : undefined,
                 severity: Number(severity),
@@ -74,10 +76,13 @@ export default function ReportForm({ onSubmitted }: Props) {
                     <fieldset disabled={submitting} className="grid gap-4 sm:grid-cols-2">
                         <div className="space-y-2 sm:col-span-2">
                             <label htmlFor="report-address" className="text-sm font-medium">Street address</label>
-                            <Input id="report-address" name="address" autoComplete="street-address"
-                                placeholder="225 Stanger St, Blacksburg, VA 24060"
-                                required maxLength={500} value={address}
-                                onChange={(event) => setAddress(event.target.value)} />
+                            <div className="flex items-center gap-2">
+                                <Input id="report-address" name="address" autoComplete="address-line1"
+                                    placeholder="225 Stanger St" aria-describedby="report-city"
+                                    required maxLength={500 - ADDRESS_SUFFIX.length} value={address}
+                                    onChange={(event) => setAddress(event.target.value)} />
+                                <span id="report-city" className="shrink-0 whitespace-nowrap text-sm text-muted-foreground">Blacksburg, VA</span>
+                            </div>
                         </div>
                         <div className="space-y-2">
                             <label htmlFor="report-illness" className="text-sm font-medium">Illness</label>

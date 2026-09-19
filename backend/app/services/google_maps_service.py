@@ -101,7 +101,7 @@ def lookup_place(latitude=None, longitude=None, place_id=None, *, address=None):
         specific_types = {"street_address", "premise", "subpremise", "establishment", "point_of_interest"}
         if len(results) != 1 or result.get("partial_match") or not specific_types.intersection(place_types):
             raise PlaceNotFound(
-                "Please enter a more specific address, including the street number, city, state, and ZIP code."
+                "Address not found in Blacksburg, VA"
             )
     formatted_address = result.get("formatted_address")
     if latitude is None or longitude is None:
