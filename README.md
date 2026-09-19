@@ -8,7 +8,7 @@ The dashboard starts at Virginia Tech (37.2296, -80.4139). Enter another latitud
 
 Use Python 3.10+ and a Node version supported by Vite 8 (Node 22.12+ or a current supported release).
 
-Backend:
+Backend (macOS/Linux/WSL):
 
 ```sh
 cd backend
@@ -16,9 +16,23 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# Set SUPABASE_URL and SUPABASE_SECRET_KEY in .env.
+# Set SUPABASE_URL, SUPABASE_SECRET_KEY and GOOGLE_MAPS_API_KEY in .env.
 python run.py
 ```
+
+Backend (Windows PowerShell):
+
+```powershell
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r backend\requirements.txt
+cd backend
+Copy-Item .env.example .env
+# Set SUPABASE_URL, SUPABASE_SECRET_KEY and GOOGLE_MAPS_API_KEY in .env.
+python run.py
+```
+
+If PowerShell blocks activation, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once. Windows has no system timezone database, which is why `tzdata` is in `requirements.txt`.
 
 Frontend, in a second terminal:
 
@@ -39,7 +53,7 @@ Keep the Supabase secret key in `backend/.env`; it must never use a `VITE_` vari
 3. Put the key in `frontend/.env` as `VITE_GOOGLE_MAPS_API_KEY`.
 4. Set `VITE_GOOGLE_MAPS_MAP_ID` to a JavaScript map ID. `DEMO_MAP_ID` works for development; create your own map ID for production.
 
-The browser key is visible in the frontend by design, so its website and API restrictions matter. No Geocoding or Places API is needed: the center is chosen by coordinates or by panning the map. See Google's [loader documentation](https://developers.google.com/maps/documentation/javascript/load-maps-js-api), [advanced marker setup](https://developers.google.com/maps/documentation/javascript/advanced-markers/start), and [key restrictions](https://developers.google.com/maps/api-security-best-practices).
+The browser key is visible in the frontend by design, so its website and API restrictions matter. The map itself needs no Geocoding or Places API: the center is chosen by coordinates or by panning the map. Saving a dropped pin (below) does use the **Geocoding API**, called only from Flask with a separate server key. See Google's [loader documentation](https://developers.google.com/maps/documentation/javascript/load-maps-js-api), [advanced marker setup](https://developers.google.com/maps/documentation/javascript/advanced-markers/start), and [key restrictions](https://developers.google.com/maps/api-security-best-practices).
 
 If the map key is absent or Google cannot load, the location list and statistics can still work through Flask. Database errors are displayed as errors, not zero reports.
 
@@ -59,6 +73,23 @@ Run [001_location_coordinates.sql](backend/migrations/001_location_coordinates.s
 Populate both coordinate fields on the desired **existing location rows** using Supabase's table editor. Leave both null until a location's coordinates are known. The migration does not invent locations, insert sample illness reports, or overwrite existing coordinates. Locations without valid coordinates are excluded from the map and area totals, with their count shown in the dashboard.
 
 No live database migration is run by application startup. Local checks use test fixtures; live Supabase and Google access require your configured credentials.
+
+## Saving a pin
+
+Flask turns a dropped pin into a saved location using Google's Geocoding API.
+
+1. In Google Cloud, enable the **Geocoding API** (and **Places API (New)** for real place names) and create a **second, server-side key** restricted to that API. Do not reuse the browser key (browser keys are usually restricted by website, which Flask requests can't satisfy).
+2. Put it in `backend/.env` as `GOOGLE_MAPS_API_KEY`.
+3. Run [002_location_pin_metadata.sql](backend/migrations/002_location_pin_metadata.sql) once in the Supabase SQL editor, after 001. It adds `place_id`, `formatted_address`, `place_types` and `address_components` to `locations`.
+
+```text
+POST /api/locations/lookup   preview the metadata, saves nothing
+POST /api/locations/pin      look up the metadata and save it to Supabase
+```
+
+Body (JSON): `latitude` and `longitude` together, and/or `place_id` (the ID Google Maps gives when a user clicks a place). Optional `name` and `location_type` (`Academic`, `Dining`, `Recreation`, `Residence`, `Off Campus`, `Other`) override what Google suggests; otherwise the name is the place's name from Google's Places API (New) when that API is enabled for the key (falling back to the street address, since the Geocoding API only returns addresses) and the type comes from Google's place types, defaulting to `Other`. When only `place_id` is sent, coordinates come from Google.
+
+`/pin` returns `{"location": {...}, "created": true}` with HTTP 201. Pinning a place that is already saved (same `place_id`) returns the existing row with HTTP 200 instead of a duplicate. Errors: 400 invalid input, 404 Google has no address there, 502 Google failed, 503 server key missing or database unavailable.
 
 ## Map API and statistics
 
@@ -91,7 +122,7 @@ Queries paginate locations and reports to avoid Supabase row-limit truncation. T
 
 ```sh
 cd backend
-.venv/bin/python -m pytest -q
+python -m pytest -q   # with the venv activated
 ```
 
 ```sh
