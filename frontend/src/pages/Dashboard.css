@@ -299,7 +299,8 @@
 .dash-dot { display: grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; color: white; font-size: 10px; font-weight: 700; line-height: 1; }
 .dash-dot-dorm { background: var(--hpt-maroon); box-shadow: 0 0 0 3px #8010361f; }
 .dash-dot-home { background: #e87722; box-shadow: 0 0 0 3px #71717a24; transform: scale(0.75); }
-.dash-dot-center { border: 1px solid #a1a1aa; background: white; color: #52525b; }
+.dash-dot-center { flex-shrink: 0; border: 1px solid #a1a1aa; background: white; color: #52525b; }
+.dash-dot-center svg { display: block; width: 10px; height: 10px; }
 .dash-map-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 0 28px 24px; }
 .dash-map-filters .dash-field { min-width: 0; }
 

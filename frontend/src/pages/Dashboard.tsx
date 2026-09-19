@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { Activity, ArrowRight, CalendarDays, Gauge, LogOut, RefreshCw, ShieldCheck, TrendingUp } from "lucide-react"
+import { Activity, ArrowRight, CalendarDays, Gauge, LogOut, Plus, RefreshCw, ShieldCheck, TrendingUp } from "lucide-react"
 import logo from "@/assets/HokiePlagueTrackerIcon.svg"
 import "./Dashboard.css"
 import DormSection from "@/components/DormSection"
@@ -155,7 +155,7 @@ export default function Dashboard({ email, onSignOut, accountError }: Props) {
                                 <ul className="dash-legend" aria-label="Map legend">
                                     <li><span className="dash-dot dash-dot-dorm" aria-hidden="true" />Dorm with reports</li>
                                     <li><span className="dash-dot dash-dot-home" aria-hidden="true" />Off-campus area</li>
-                                    <li><span className="dash-dot dash-dot-center" aria-hidden="true">+</span>Drillfield</li>
+                                    <li><span className="dash-dot dash-dot-center" aria-hidden="true"><Plus strokeWidth={3} /></span>Drillfield</li>
                                 </ul>
                             </div>
                             <div className="dash-map-filters" role="group" aria-label="Map filters">
