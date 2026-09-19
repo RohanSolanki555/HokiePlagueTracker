@@ -6,7 +6,7 @@ import httpx
 from postgrest import SyncPostgrestClient
 
 from app import create_app
-from app.services.map_service import distance_km, get_map_data, read_all, summarize_reports
+from app.services.map_service import blur_to_area, distance_km, get_map_data, read_all, summarize_reports
 
 
 NOW = datetime(2026, 9, 19, 12, tzinfo=timezone.utc)
@@ -41,6 +41,10 @@ class FakeQuery:
         self.rows.sort(key=lambda row: row[column])
         return self
 
+    def eq(self, column, value):
+        self.rows = [row for row in self.rows if row.get(column) == value]
+        return self
+
     def gte(self, column, value):
         self.rows = [row for row in self.rows if row[column] >= value]
         return self
@@ -72,8 +76,11 @@ class FakeSupabase:
         return FakeQuery(self.tables[name], self.cap)
 
 
-def location(id, latitude=37.2296, longitude=-80.4139):
-    return {"id": id, "name": f"Location {id}", "location_type": "campus", "latitude": latitude, "longitude": longitude}
+def location(id, latitude=37.2296, longitude=-80.4139, is_dorm=True):
+    return {
+        "id": id, "name": f"Location {id}", "location_type": "Residence", "is_dorm": is_dorm,
+        "latitude": latitude, "longitude": longitude,
+    }
 
 
 def report(id, location_id, age, severity=3):
@@ -115,7 +122,8 @@ def test_empty_area_does_not_query_reports():
     data = get_map_data(database, 0, 0, 3, 7, NOW)
     assert data["locations"] == []
     assert data["summary"]["total_reports"] == 0
-    assert set(database.read_tables) == {"locations"}
+    # Only the home-report read runs; no per-dorm report lookup is made.
+    assert database.read_tables.count("reports") == 1
 
 
 def test_zero_coordinates_are_valid_and_dateline_distance_is_short():
@@ -199,3 +207,63 @@ def test_summary_endpoint_uses_database_counts(monkeypatch):
 def authenticated_route_tests(monkeypatch):
     # These tests cover map/pin behavior; test_auth.py exercises the real auth guard.
     monkeypatch.setattr("app.require_verified_user", lambda: None)
+
+
+def home(id, age, latitude=37.2301, longitude=-80.418, severity=2):
+    return {
+        "id": id, "location_id": None, "residence_type": "home", "severity": severity,
+        "created_at": (NOW - age).isoformat(), "area_latitude": latitude, "area_longitude": longitude,
+    }
+
+
+def test_blur_snaps_nearby_points_to_one_cell_centre_and_is_stable():
+    first, second = blur_to_area(37.23012, -80.41803), blur_to_area(37.23049, -80.41821)
+    assert first == second
+    assert blur_to_area(*first) == first
+    assert abs(first[0] - 37.23012) <= 0.0025 + 1e-9 and abs(first[1] + 80.41803) <= 0.0025 + 1e-9
+    assert blur_to_area(0, 0) == (0.0025, 0.0025)
+    assert blur_to_area(-0.0001, -0.0001) == (-0.0025, -0.0025)
+
+
+def test_only_dorms_are_sent_to_the_map():
+    database = FakeSupabase([location(1), location(2, is_dorm=False)], [])
+    data = get_map_data(database, 37.2296, -80.4139, 3, 7, NOW)
+    assert [row["id"] for row in data["locations"]] == [1]
+
+
+def test_home_reports_become_anonymous_cells_and_count_toward_the_summary():
+    cell = blur_to_area(37.23012, -80.41803)
+    database = FakeSupabase([location(1)], [
+        report(1, 1, timedelta(hours=1)),
+        home(2, timedelta(hours=1), *cell),
+        home(3, timedelta(hours=2), *blur_to_area(37.23049, -80.41821)),  # Same cell.
+        home(4, timedelta(days=8), *cell),  # Previous period: no pin, still in the comparison.
+        home(5, timedelta(hours=1), 40, -80),  # Outside the radius.
+        home(6, timedelta(hours=1), None, None),  # No usable position.
+    ])
+    data = get_map_data(database, 37.2296, -80.4139, 3, 7, NOW)
+    assert data["home_areas"] == [{"latitude": cell[0], "longitude": cell[1], "reports": 2}]
+    assert data["summary"]["total_reports"] == 3
+    assert data["summary"]["previous_period_reports"] == 1
+    assert data["locations"][0]["stats"]["total_reports"] == 1  # Dorm stats exclude home reports.
+
+
+def test_stored_home_positions_are_blurred_again_before_leaving_the_api():
+    exact = (37.23012, -80.41803)
+    database = FakeSupabase([], [home(1, timedelta(hours=1), *exact)])
+    area = get_map_data(database, 37.2296, -80.4139, 3, 7, NOW)["home_areas"][0]
+    assert (area["latitude"], area["longitude"]) == blur_to_area(*exact) != exact
+    assert set(area) == {"latitude", "longitude", "reports"}
+
+
+def test_location_list_only_returns_dorms(monkeypatch):
+    class Unpaged(FakeQuery):
+        def execute(self):
+            return SimpleNamespace(data=self.rows)
+
+    rows = [location(1), location(2, is_dorm=False)]
+    monkeypatch.setattr("app.routes.locations.get_supabase", lambda: SimpleNamespace(
+        table=lambda name: Unpaged(rows, 100),
+    ))
+    listed = create_app().test_client().get("/api/locations").json
+    assert [row["id"] for row in listed] == [1]

@@ -1,24 +1,50 @@
 import type { Page } from "@playwright/test"
-import type { LocationMapResponse } from "../src/services/api"
+import type { DormDetail, DormListResponse, LocationMapResponse } from "../src/services/api"
+import { mockSignedIn } from "./auth-helper"
+
+const busy = { total_reports: 6, reports_today: 2, previous_period_reports: 3, change_percent: 100, average_severity: 2.5, latest_report_at: "2026-09-19T11:00:00Z" }
+const quiet = { total_reports: 0, reports_today: 0, previous_period_reports: 0, change_percent: 0, average_severity: null, latest_report_at: null }
 
 export const mapData: LocationMapResponse = {
     center: { latitude: 37.2296, longitude: -80.4139 }, radius_km: 3, days: 7,
     generated_at: "2026-09-19T12:00:00Z", unmapped_locations: 1,
-    summary: { total_reports: 6, reports_today: 2, previous_period_reports: 3, change_percent: 100, average_severity: 2.5, latest_report_at: "2026-09-19T11:00:00Z" },
+    summary: busy,
     locations: [
-        {
-            id: 42, name: "Newman Library", location_type: "library", latitude: 37.2284, longitude: -80.4198, distance_km: 0.54,
-            stats: { total_reports: 6, reports_today: 2, previous_period_reports: 3, change_percent: 100, average_severity: 2.5, latest_report_at: "2026-09-19T11:00:00Z" },
-        },
-        {
-            id: 99, name: "Squires Student Center", location_type: "student_center", latitude: 37.2296, longitude: -80.4179, distance_km: 0.35,
-            stats: { total_reports: 0, reports_today: 0, previous_period_reports: 0, change_percent: 0, average_severity: null, latest_report_at: null },
-        },
+        { id: 42, name: "Pritchard Hall", location_type: "Residence", floors: 6, latitude: 37.2284, longitude: -80.4198, distance_km: 0.54, stats: busy },
+        { id: 99, name: "Slusher Hall", location_type: "Residence", floors: 4, latitude: 37.2296, longitude: -80.4179, distance_km: 0.35, stats: quiet },
+    ],
+    home_areas: [{ latitude: 37.2325, longitude: -80.4175, reports: 2 }],
+}
+
+export const dormList: DormListResponse = {
+    days: 7, generated_at: "2026-09-19T12:00:00Z",
+    dorms: [
+        { id: 42, name: "Pritchard Hall", floors: 6, latitude: 37.2284, longitude: -80.4198, stats: busy },
+        { id: 99, name: "Slusher Hall", floors: 4, latitude: 37.2296, longitude: -80.4179, stats: quiet },
     ],
 }
 
+export function dormDetail(id: number, days = 7): DormDetail {
+    const dorm = dormList.dorms.find((row) => row.id === id)!
+    const { stats, ...summary } = dorm
+    return {
+        dorm: summary, days, generated_at: "2026-09-19T12:00:00Z", stats,
+        illnesses: id === 42 ? [{ illness: "Flu A", reports: 4 }, { illness: "Norovirus", reports: 2 }] : [],
+        daily: id === 42
+            ? [{ date: "2026-09-17", reports: 1, average_severity: 2 }, { date: "2026-09-18", reports: 3, average_severity: 3 }, { date: "2026-09-19", reports: 2, average_severity: 2.5 }]
+            : [{ date: "2026-09-19", reports: 0, average_severity: null }],
+        floors: Array.from({ length: dorm.floors ?? 0 }, (_, index) => ({ floor: index + 1, reports: id === 42 && index === 2 ? 6 : 0 })),
+    }
+}
+
 export async function mockData(page: Page) {
+    await mockSignedIn(page)
     await page.route("**/api/locations/map?*", (route) => route.fulfill({ json: mapData }))
+    await page.route(/\/api\/dorms\?/, (route) => route.fulfill({ json: dormList }))
+    await page.route(/\/api\/dorms\/\d+\?/, (route) => {
+        const url = new URL(route.request().url())
+        return route.fulfill({ json: dormDetail(Number(url.pathname.split("/").pop()), Number(url.searchParams.get("days"))) })
+    })
 }
 
 // Exercise the component's Maps API contract without making billable Google requests.

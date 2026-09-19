@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from "react"
 import { MapPin } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { loadGoogleMaps, mapsApiKey, mapsMapId } from "@/lib/google-maps"
-import type { MapLocation, MapQuery } from "@/services/api"
+import type { HomeArea, MapLocation, MapQuery } from "@/services/api"
 
 interface Props {
     query: MapQuery
     locations: MapLocation[]
+    homeAreas: HomeArea[]
     selectedId: number | null
     onSelect: (id: number) => void
     onCenterChange: (latitude: number, longitude: number) => void
@@ -14,7 +15,7 @@ interface Props {
 
 type Runtime = Awaited<ReturnType<typeof loadGoogleMaps>> & { map: google.maps.Map }
 
-export default function LocationMap({ query, locations, selectedId, onSelect, onCenterChange }: Props) {
+export default function LocationMap({ query, locations, homeAreas, selectedId, onSelect, onCenterChange }: Props) {
     const container = useRef<HTMLDivElement>(null)
     const [runtime, setRuntime] = useState<Runtime | null>(null)
     const [error, setError] = useState<string | null>(null)
@@ -107,6 +108,27 @@ export default function LocationMap({ query, locations, selectedId, onSelect, on
             marker.map = null
         })
     }, [runtime, locations, selectedId, onSelect])
+
+    useEffect(() => {
+        if (!runtime) return
+        // Off-campus home reports: approximate cells only. No title, no click handling, and
+        // pointer events off, so nothing about them can be selected or inspected.
+        const markers = homeAreas.map((area) => {
+            const marker = new runtime.marker.AdvancedMarkerElement({
+                map: runtime.map,
+                position: { lat: area.latitude, lng: area.longitude },
+                zIndex: 0,
+                gmpClickable: false,
+            })
+            marker.style.pointerEvents = "none"
+            marker.setAttribute("aria-hidden", "true")
+            marker.append(new runtime.marker.PinElement({
+                background: "#71717a", borderColor: "#52525b", glyphColor: "#71717a", scale: 0.7,
+            }))
+            return marker
+        })
+        return () => markers.forEach((marker) => { marker.map = null })
+    }, [runtime, homeAreas])
 
     const unavailable = !mapsApiKey || error
 

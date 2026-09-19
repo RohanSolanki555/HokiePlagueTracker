@@ -51,6 +51,12 @@ export const api = {
     getSummary: () =>
         request<Summary>("/stats/summary"),
 
+    getDorms: (days: number, signal?: AbortSignal) =>
+        request<DormListResponse>(`/dorms?days=${days}`, { signal }),
+
+    getDorm: (id: number, days: number, signal?: AbortSignal) =>
+        request<DormDetail>(`/dorms/${id}?days=${days}`, { signal }),
+
     getLocationMap: (query: MapQuery, signal?: AbortSignal) => {
         const params = new URLSearchParams({
             latitude: String(query.latitude),
@@ -75,8 +81,10 @@ export interface Report {
     created_at: string
 }
 
-export interface CreateReportRequest {
-    address: string
+export type CreateReportRequest = (
+    | { residence_type: "dorm"; dorm_id: number; floor: number }
+    | { residence_type: "home"; address: string }
+) & {
     illness: string
     flu_type?: "A" | "B"
     severity: number
@@ -90,14 +98,8 @@ export interface Location {
     longitude: number | null
 }
 
-export interface ReportLocation extends Location {
-    latitude: number
-    longitude: number
-}
-
 export interface CreateReportResponse {
     report: Report
-    location: ReportLocation
 }
 
 export interface Summary {
@@ -125,8 +127,44 @@ export interface LocationStatistics {
 export interface MapLocation extends Location {
     latitude: number
     longitude: number
+    floors: number | null
     distance_km: number
     stats: LocationStatistics
+}
+
+// An approximate ~500 m cell holding off-campus home reports. It carries no name, ID or address.
+export interface HomeArea {
+    latitude: number
+    longitude: number
+    reports: number
+}
+
+export interface Dorm {
+    id: number
+    name: string
+    floors: number | null
+    latitude: number | null
+    longitude: number | null
+}
+
+export interface DormSummary extends Dorm {
+    stats: LocationStatistics
+}
+
+export interface DormListResponse {
+    days: number
+    generated_at: string
+    dorms: DormSummary[]
+}
+
+export interface DormDetail {
+    dorm: Dorm
+    days: number
+    generated_at: string
+    stats: LocationStatistics
+    illnesses: { illness: string; reports: number }[]
+    daily: { date: string; reports: number; average_severity: number | null }[]
+    floors: { floor: number; reports: number }[]
 }
 
 export interface LocationMapResponse {
@@ -135,6 +173,7 @@ export interface LocationMapResponse {
     days: number
     generated_at: string
     locations: MapLocation[]
+    home_areas: HomeArea[]
     summary: LocationStatistics
     unmapped_locations: number
 }
