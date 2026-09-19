@@ -51,10 +51,10 @@ export const api = {
     getSummary: () =>
         request<Summary>("/stats/summary"),
 
-    getDorms: (days: number, signal?: AbortSignal) =>
+    getDorms: (days: ReportPeriod, signal?: AbortSignal) =>
         request<DormListResponse>(`/dorms?days=${days}`, { signal }),
 
-    getDorm: (id: number, days: number, signal?: AbortSignal) =>
+    getDorm: (id: number, days: ReportPeriod, signal?: AbortSignal) =>
         request<DormDetail>(`/dorms/${id}?days=${days}`, { signal }),
 
     getLocationMap: (query: MapQuery, signal?: AbortSignal) => {
@@ -108,11 +108,13 @@ export interface Summary {
     weekly_change: number | null
 }
 
+export type ReportPeriod = number | "all"
+
 export interface MapQuery {
     latitude: number
     longitude: number
     radius_km: number
-    days: number
+    days: ReportPeriod
 }
 
 export interface LocationStatistics {
@@ -152,14 +154,14 @@ export interface DormSummary extends Dorm {
 }
 
 export interface DormListResponse {
-    days: number
+    days: ReportPeriod
     generated_at: string
     dorms: DormSummary[]
 }
 
 export interface DormDetail {
     dorm: Dorm
-    days: number
+    days: ReportPeriod
     generated_at: string
     stats: LocationStatistics
     illnesses: { illness: string; reports: number }[]
@@ -170,7 +172,7 @@ export interface DormDetail {
 export interface LocationMapResponse {
     center: { latitude: number; longitude: number }
     radius_km: number
-    days: number
+    days: ReportPeriod
     generated_at: string
     locations: MapLocation[]
     home_areas: HomeArea[]

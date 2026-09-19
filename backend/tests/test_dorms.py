@@ -153,3 +153,33 @@ def test_dorm_endpoints_return_data_404_and_hide_failures(client, monkeypatch):
 
 def test_dorm_endpoints_require_login():
     assert create_app().test_client().get("/api/dorms").status_code == 401
+
+
+@pytest.mark.parametrize("days,count", [(7, 1), (14, 2), (30, 3), (None, 4)])
+def test_periods_apply_to_dorm_list_and_every_breakdown(days, count):
+    database = FakeSupabase([dorm(1, "Pritchard")], [
+        *[report(index, 1, timedelta(days=age), "Flu A", 2) for index, age in enumerate([1, 10, 20, 400], 1)],
+        report(5, 1, timedelta(hours=-1), "RSV"),
+    ])
+    listed = list_dorms(database, days, NOW)
+    detail = get_dorm_detail(database, 1, days, NOW)
+    assert detail["days"] == listed["days"] == ("all" if days is None else days)
+    assert listed["dorms"][0]["stats"]["total_reports"] == detail["stats"]["total_reports"] == count
+    assert detail["illnesses"] == [{"illness": "Flu A", "reports": count}]
+    assert sum(day["reports"] for day in detail["daily"]) == count
+    assert detail["floors"][1]["reports"] == count
+    if days is None:
+        assert detail["stats"]["change_percent"] is None
+        assert len(detail["daily"]) == 401
+
+
+def test_all_time_dorm_routes_and_empty_detail(client, monkeypatch):
+    database = FakeSupabase([dorm(1, "Pritchard")], [])
+    monkeypatch.setattr("app.routes.dorms.get_supabase", lambda: database)
+    for path in ("/api/dorms", "/api/dorms/1"):
+        response = client.get(f"{path}?days=all")
+        assert response.status_code == 200
+        assert response.json["days"] == "all"
+    detail = get_dorm_detail(database, 1, None, NOW)
+    assert detail["stats"]["total_reports"] == 0
+    assert detail["daily"] == [{"date": "2026-09-19", "reports": 0, "average_severity": None}]

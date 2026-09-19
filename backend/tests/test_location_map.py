@@ -267,3 +267,41 @@ def test_location_list_only_returns_dorms(monkeypatch):
     ))
     listed = create_app().test_client().get("/api/locations").json
     assert [row["id"] for row in listed] == [1]
+
+
+@pytest.mark.parametrize("days,count", [(7, 2), (14, 4), (30, 6), (None, 8)])
+def test_period_filters_dorm_and_home_reports_including_all_time(days, count):
+    database = FakeSupabase([location(1), location(2, 40)], [
+        *[report(index, 1, timedelta(days=age)) for index, age in enumerate([1, 10, 20, 400], 1)],
+        *[home(index, timedelta(days=age)) for index, age in enumerate([2, 12, 25, 800], 10)],
+        report(20, 1, timedelta(hours=-1)),
+        home(21, timedelta(hours=-1)),
+        report(22, 2, timedelta(days=1)),
+        home(23, timedelta(days=1), 40, -80),
+    ])
+    data = get_map_data(database, 37.2296, -80.4139, 3, days, NOW)
+    assert data["days"] == ("all" if days is None else days)
+    assert data["summary"]["total_reports"] == count
+    assert data["locations"][0]["stats"]["total_reports"] == count // 2
+    assert data["home_areas"][0]["reports"] == count // 2
+    if days is None:
+        assert data["summary"]["change_percent"] is None
+        assert data["summary"]["previous_period_reports"] == 0
+
+
+def test_all_time_empty_area_has_no_prior_period():
+    data = get_map_data(FakeSupabase([], []), 37.2296, -80.4139, 3, None, NOW)
+    assert data["summary"]["total_reports"] == 0
+    assert data["summary"]["change_percent"] is None
+
+
+def test_all_time_route_includes_old_reports_and_respects_radius(monkeypatch):
+    database = FakeSupabase([location(1), location(2, 37.25)], [
+        report(1, 1, timedelta(days=5000)), report(2, 2, timedelta(days=5000)),
+    ])
+    monkeypatch.setattr("app.routes.locations.get_supabase", lambda: database)
+    client = create_app().test_client()
+    for radius, total in [(0.5, 1), (3, 2)]:
+        response = client.get(f"/api/locations/map?days=all&radius_km={radius}")
+        assert response.status_code == 200
+        assert response.json["summary"]["total_reports"] == total

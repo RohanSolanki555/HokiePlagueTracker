@@ -53,7 +53,7 @@ test("dorm pins select their dorm; home areas are approximate and cannot be sele
     expect(errors).toEqual([])
 })
 
-test("search this area submits the map center and empty areas remove old pins", async ({ page }) => {
+test("refresh keeps the Drillfield query and removes expired pins", async ({ page }) => {
     await mockGoogleMaps(page)
     await mockData(page)
     await page.goto("/")
@@ -62,8 +62,10 @@ test("search this area submits the map center and empty areas remove old pins", 
         json: { ...mapData, locations: [], home_areas: [], summary: { ...mapData.summary, total_reports: 0 } },
     }))
     const request = page.waitForRequest((request) => request.url().includes("/locations/map?"))
-    await page.getByRole("button", { name: "Search this area" }).click()
-    expect(new URL((await request).url()).searchParams.get("latitude")).toBe("37.2296")
+    await page.getByRole("button", { name: "Refresh data" }).click()
+    expect(Object.fromEntries(new URL((await request).url()).searchParams)).toEqual({
+        latitude: "37.2274294", longitude: "-80.4222303", radius_km: "3", days: "7",
+    })
     await expect(markers(page)).toHaveCount(1)
     await expect(page.getByText("0 dorms in this area")).toBeVisible()
     await expect(listRow(page, "Pritchard Hall")).toBeVisible() // The dorm list does not depend on the map area.
@@ -171,8 +173,7 @@ test("a home report adds only an unclickable area, without moving the map or exp
 
     await expect(markers(page)).toHaveCount(INITIAL_MARKERS + 1)
     await expect(homeMarkers(page)).toHaveCount(2)
-    await expect(page.getByLabel("Latitude", { exact: true })).toHaveValue("37.2296")
-    await expect(page.getByLabel("Longitude", { exact: true })).toHaveValue("-80.4139")
+    await expect(page.locator("[data-map-ready]")).toHaveAttribute("data-center", JSON.stringify({ lat: 37.2274294, lng: -80.4222303 }))
     // The form's placeholder legitimately contains an example address, so check markers and visible text only.
     expect(await markers(page).evaluateAll((elements) => elements.map((element) => element.outerHTML).join(""))).not.toContain("Stanger")
     await expect(page.locator("body")).not.toContainText("Stanger")
@@ -216,4 +217,70 @@ test("reports from other users refresh on focus and every fifteen seconds", asyn
     await expect(page.getByRole("button", { name: "Pritchard Hall: 8 reports", exact: true }).locator("test-pin")).toHaveText("8")
     await expect(listRow(page, "Pritchard Hall")).toContainText("8 reports")
     await expect(markers(page)).toHaveCount(INITIAL_MARKERS)
+})
+
+test("the map opens on the Drillfield and can return there after panning", async ({ page }) => {
+    await mockGoogleMaps(page)
+    await mockData(page)
+    await page.goto("/")
+    const canvas = page.locator("[data-map-ready]")
+    const center = JSON.stringify({ lat: 37.2274294, lng: -80.4222303 })
+    await expect(canvas).toHaveAttribute("data-center", center)
+    await expect(page.locator('test-marker[title="Drillfield"]')).toHaveAttribute("data-position", center)
+    await canvas.dispatchEvent("test-pan")
+    await expect(canvas).toHaveAttribute("data-center", JSON.stringify({ lat: 40, lng: -74 }))
+    await page.getByRole("button", { name: "Center on Drillfield" }).click()
+    await expect(canvas).toHaveAttribute("data-center", center)
+    await expect(page.getByRole("button", { name: "Search this area" })).toHaveCount(0)
+    await expect(markers(page)).toHaveCount(INITIAL_MARKERS)
+})
+
+
+test("map period filters update counts and request matching dorm statistics", async ({ page }) => {
+    await mockGoogleMaps(page)
+    await mockData(page)
+    await page.route("**/api/locations/map?*", (route) => {
+        const period = new URL(route.request().url()).searchParams.get("days")
+        const count = period === "30" ? 3 : period === "14" ? 2 : 1
+        return route.fulfill({ json: {
+            ...mapData, days: Number(period),
+            summary: { ...mapData.summary, total_reports: count, change_percent: 0 },
+            locations: [{ ...mapData.locations[0], stats: { ...mapData.summary, total_reports: count } }],
+        } })
+    })
+    await page.goto("/")
+    await expect(page.getByRole("button", { name: "Pritchard Hall: 1 reports", exact: true })).toBeVisible()
+    await listRow(page, "Pritchard Hall").click()
+    await expect(page.getByLabel("Report period").locator("option")).toHaveText(["30 days", "14 days", "7 days"])
+    for (const [period, count] of [["30", 3], ["14", 2], ["7", 1]] as const) {
+        const dormRequest = page.waitForRequest((request) => {
+            const url = new URL(request.url())
+            return url.pathname.endsWith("/dorms/42") && url.searchParams.get("days") === period
+        })
+        await page.getByLabel("Report period").selectOption(period)
+        await dormRequest
+        const pin = page.getByRole("button", { name: "Pritchard Hall: " + count + " reports", exact: true })
+        await expect(pin.locator("test-pin")).toHaveText(String(count))
+        await expect(page.locator(".dash-stats")).toContainText("Reports in " + period + " days")
+    }
+})
+
+test("circle radius updates the map and API while staying centered on the Drillfield", async ({ page }) => {
+    await mockGoogleMaps(page)
+    await mockData(page)
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto("/")
+    const canvas = page.locator("[data-map-ready]")
+    await expect(canvas).toHaveAttribute("data-radius", "3000")
+    await page.getByLabel("Report period").selectOption("30")
+    const request = page.waitForRequest((request) => request.url().includes("radius_km=5"))
+    await page.getByLabel("Circle radius").selectOption("5")
+    expect(Object.fromEntries(new URL((await request).url()).searchParams)).toEqual({
+        latitude: "37.2274294", longitude: "-80.4222303", radius_km: "5", days: "30",
+    })
+    await expect(canvas).toHaveAttribute("data-radius", "5000")
+    await expect(canvas).toHaveAttribute("data-center", JSON.stringify({ lat: 37.2274294, lng: -80.4222303 }))
+    await expect(page.getByRole("group", { name: "Map filters" })).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    await page.screenshot({ path: test.info().outputPath("map-filters-mobile.png"), fullPage: true })
 })

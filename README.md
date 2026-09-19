@@ -8,7 +8,7 @@ and frontend public-key configuration. Dashboard and reporting now require login
 
 Tracks illness reports around Virginia Tech in Blacksburg, Virginia. React + TypeScript + Vite render the dashboard; Flask reads locations and reports from Supabase.
 
-The dashboard starts at Virginia Tech (37.2296, -80.4139). Enter another latitude/longitude, choose a radius and report period, or pan the Google map and select **Search this area**. Pins show report counts. Selecting a pin or a location in the list shows its counts, average severity, and change from the previous period.
+The dashboard shows the last seven days of reports within 3 km of the [Virginia Tech Drillfield](https://www.coordinatesfinder.com/coordinates/13540-virginia-tech-drill-field-blacksburg-va) (37.2274294, -80.4222303). Pan and zoom the map, then select **Center on Drillfield** to return to campus. The reporting area stays centered on the Drillfield. Controls below the map filter by **30 days**, **14 days**, or **7 days**, and change the circle radius. They update immediately; the period also applies to summary and dorm statistics. Pins show report counts. Selecting a pin or a location in the list shows its counts, average severity, and change from the previous period.
 
 ## Local setup
 
@@ -125,7 +125,7 @@ For example: `POST /api/locations/pin` with `{"address":"225 Stanger St, Blacksb
 GET /api/locations/map?latitude=37.2296&longitude=-80.4139&radius_km=3&days=7
 ```
 
-Defaults are the values shown above. Supply latitude and longitude together. Latitude must be -90–90, longitude -180–180, radius 0.1–100 km, and days an integer from 1–30. Invalid queries return HTTP 400; unavailable database data returns HTTP 503.
+Defaults are the values shown above. Supply latitude and longitude together. Latitude must be -90–90, longitude -180–180, radius 0.1–100 km, and days `all` or an integer from 1–30. Invalid queries return HTTP 400; unavailable database data returns HTTP 503.
 
 The response includes `center`, `radius_km`, `days`, `generated_at`, `unmapped_locations` (dorms without coordinates), an area `summary`, `home_areas` (anonymous cells: `latitude`, `longitude`, `reports`), and `locations` (dorms only). Each location retains its database `id`, coordinates, distance from the search center, and a `stats` object:
 

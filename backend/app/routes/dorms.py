@@ -2,24 +2,15 @@ from flask import Blueprint, current_app, jsonify, request
 
 from app.services.dorm_service import get_dorm_detail, list_dorms
 from app.services.supabase_service import get_supabase
+from app.services.report_period import parse_days
 
 dorms_bp = Blueprint("dorms", __name__)
-
-
-def read_days():
-    try:
-        days = int(request.args.get("days", "7"))
-    except ValueError:
-        raise ValueError("days must be an integer from 1 to 30") from None
-    if not 1 <= days <= 30:
-        raise ValueError("days must be an integer from 1 to 30")
-    return days
 
 
 @dorms_bp.get("")
 def get_dorms():
     try:
-        days = read_days()
+        days = parse_days(request.args.get("days", "7"))
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
     try:
@@ -32,7 +23,7 @@ def get_dorms():
 @dorms_bp.get("/<int:dorm_id>")
 def get_dorm(dorm_id):
     try:
-        days = read_days()
+        days = parse_days(request.args.get("days", "7"))
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
     try:

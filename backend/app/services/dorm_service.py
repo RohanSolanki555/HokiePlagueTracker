@@ -37,7 +37,8 @@ def list_dorms(supabase, days, now=None):
         lambda: supabase.table("locations").select(DORM_COLUMNS).eq("is_dorm", True).order("id")
     ))
     grouped = {row["id"]: [] for row in rows}
-    for report in read_reports(supabase, now - timedelta(days=days * 2), now, list(grouped)):
+    since = now - timedelta(days=days * 2) if days is not None else None
+    for report in read_reports(supabase, since, now, list(grouped)):
         if report["location_id"] in grouped:
             grouped[report["location_id"]].append(report)
     dorms = [
@@ -45,7 +46,7 @@ def list_dorms(supabase, days, now=None):
         for row in rows
     ]
     dorms.sort(key=lambda dorm: dorm["name"].lower())
-    return {"days": days, "generated_at": now.isoformat(), "dorms": dorms}
+    return {"days": days if days is not None else "all", "generated_at": now.isoformat(), "dorms": dorms}
 
 
 def get_dorm_detail(supabase, dorm_id, days, now=None):
@@ -59,25 +60,30 @@ def get_dorm_detail(supabase, dorm_id, days, now=None):
         return None
     dorm = public_dorm(rows[0])
 
-    reports = list(read_all(
-        lambda: (
+    def build_query():
+        query = (
             supabase.table("reports")
             .select("id,severity,created_at,illness,floor")
             .eq("location_id", dorm_id)
-            .gte("created_at", (now - timedelta(days=days * 2)).isoformat())
             .lte("created_at", now.isoformat())
             .order("id")
         )
-    ))
+        return query if days is None else query.gte("created_at", (now - timedelta(days=days * 2)).isoformat())
+    reports = list(read_all(build_query))
 
-    start = now - timedelta(days=days)
-    current = [report for report in reports if start <= parse_timestamp(report["created_at"]) <= now]
+    start = now - timedelta(days=days) if days is not None else None
+    current = [
+        report for report in reports
+        if (start is None or start <= parse_timestamp(report["created_at"]))
+        and parse_timestamp(report["created_at"]) <= now
+    ]
 
     illnesses = Counter(report.get("illness") or "Not specified" for report in current)
 
     # One bucket per campus-timezone day from the window's first day through today,
     # so the daily counts always add up to stats.total_reports.
-    first_day = start.astimezone(CAMPUS_TIMEZONE).date()
+    first_report = min((parse_timestamp(report["created_at"]) for report in current), default=now)
+    first_day = (start if start is not None else first_report).astimezone(CAMPUS_TIMEZONE).date()
     last_day = now.astimezone(CAMPUS_TIMEZONE).date()
     by_day = {first_day + timedelta(days=offset): [] for offset in range((last_day - first_day).days + 1)}
     for report in current:
@@ -88,7 +94,7 @@ def get_dorm_detail(supabase, dorm_id, days, now=None):
 
     return {
         "dorm": dorm,
-        "days": days,
+        "days": days if days is not None else "all",
         "generated_at": now.isoformat(),
         "stats": summarize_reports(reports, now, days),
         "illnesses": [

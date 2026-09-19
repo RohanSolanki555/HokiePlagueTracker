@@ -73,30 +73,31 @@ def read_reports(supabase, since, now, location_ids=None):
             query = (
                 supabase.table("reports")
                 .select("id,location_id,severity,created_at")
-                .gte("created_at", since.isoformat())
                 .lte("created_at", now.isoformat())
                 .order("id")
             )
+            if since is not None:
+                query = query.gte("created_at", since.isoformat())
             return query if batch is None else query.in_("location_id", batch)
         yield from read_all(build_query)
 
 
 def read_home_reports(supabase, since, now):
     def build_query():
-        return (
+        query = (
             supabase.table("reports")
             .select("id,severity,created_at,area_latitude,area_longitude")
             .eq("residence_type", "home")
-            .gte("created_at", since.isoformat())
             .lte("created_at", now.isoformat())
             .order("id")
         )
+        return query if since is None else query.gte("created_at", since.isoformat())
     yield from read_all(build_query)
 
 
 def summarize_reports(reports, now, days):
-    start = now - timedelta(days=days)
-    previous_start = start - timedelta(days=days)
+    start = now - timedelta(days=days) if days is not None else None
+    previous_start = start - timedelta(days=days) if start is not None else None
     today = now.astimezone(CAMPUS_TIMEZONE).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
@@ -105,9 +106,9 @@ def summarize_reports(reports, now, days):
     latest = None
     for report in reports:
         created_at = parse_timestamp(report["created_at"])
-        if created_at > now or created_at < previous_start:
+        if created_at > now or (previous_start is not None and created_at < previous_start):
             continue
-        if created_at < start:
+        if start is not None and created_at < start:
             previous += 1
             continue
         total += 1
@@ -123,8 +124,10 @@ def summarize_reports(reports, now, days):
         "reports_today": reports_today,
         "previous_period_reports": previous,
         # No finite percentage exists when a nonempty period follows zero reports.
-        "change_percent": round((total - previous) / previous * 100, 1)
-        if previous else (0 if total == 0 else None),
+        "change_percent": None if days is None else (
+            round((total - previous) / previous * 100, 1)
+            if previous else (0 if total == 0 else None)
+        ),
         "average_severity": round(sum(severities) / len(severities), 2)
         if severities else None,
         "latest_report_at": latest.isoformat() if latest else None,
@@ -200,8 +203,9 @@ def get_map_data(supabase, latitude, longitude, radius_km, days, now=None):
             })
 
     grouped = {location["id"]: [] for location in locations}
+    since = now - timedelta(days=days * 2) if days is not None else None
     reports = list(read_reports(
-        supabase, now - timedelta(days=days * 2), now, list(grouped)
+        supabase, since, now, list(grouped)
     ))
     for report in reports:
         if report["location_id"] in grouped:
@@ -211,10 +215,10 @@ def get_map_data(supabase, latitude, longitude, radius_km, days, now=None):
     locations.sort(key=lambda location: (location["distance_km"], location["name"]))
 
     # Home reports contribute to the totals and to anonymous, unclickable cells.
-    period_start = now - timedelta(days=days)
+    period_start = now - timedelta(days=days) if days is not None else None
     home_reports = []
     cells = Counter()
-    for report in read_home_reports(supabase, now - timedelta(days=days * 2), now):
+    for report in read_home_reports(supabase, since, now):
         point = coordinates({"latitude": report["area_latitude"], "longitude": report["area_longitude"]})
         if point is None:
             continue
@@ -223,13 +227,13 @@ def get_map_data(supabase, latitude, longitude, radius_km, days, now=None):
             continue
         home_reports.append(report)
         created_at = parse_timestamp(report["created_at"])
-        if period_start <= created_at <= now:
+        if (period_start is None or period_start <= created_at) and created_at <= now:
             cells[point] += 1
 
     return {
         "center": {"latitude": latitude, "longitude": longitude},
         "radius_km": radius_km,
-        "days": days,
+        "days": days if days is not None else "all",
         "generated_at": now.isoformat(),
         "locations": locations,
         "home_areas": [

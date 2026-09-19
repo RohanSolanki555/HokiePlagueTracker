@@ -10,6 +10,7 @@ from app.services.google_maps_service import (
 )
 from app.services.map_service import get_map_data, save_pinned_location
 from app.services.supabase_service import get_supabase
+from app.services.report_period import parse_days
 
 locations_bp = Blueprint("locations", __name__)
 
@@ -118,7 +119,7 @@ def get_location_map():
         latitude = float(request.args.get("latitude", "37.2296"))
         longitude = float(request.args.get("longitude", "-80.4139"))
         radius = float(request.args.get("radius_km", "3"))
-        days = int(request.args.get("days", "7"))
+        days = parse_days(request.args.get("days", "7"))
         if ("latitude" in request.args) != ("longitude" in request.args):
             raise ValueError("latitude and longitude must be supplied together")
         if not isfinite(latitude) or not -90 <= latitude <= 90:
@@ -127,8 +128,6 @@ def get_location_map():
             raise ValueError("longitude must be between -180 and 180")
         if not isfinite(radius) or not 0.1 <= radius <= 100:
             raise ValueError("radius_km must be between 0.1 and 100")
-        if not 1 <= days <= 30:
-            raise ValueError("days must be between 1 and 30")
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
 

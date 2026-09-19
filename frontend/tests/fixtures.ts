@@ -1,12 +1,12 @@
 import type { Page } from "@playwright/test"
-import type { DormDetail, DormListResponse, LocationMapResponse } from "../src/services/api"
+import type { DormDetail, DormListResponse, LocationMapResponse, ReportPeriod } from "../src/services/api"
 import { mockSignedIn } from "./auth-helper"
 
 const busy = { total_reports: 6, reports_today: 2, previous_period_reports: 3, change_percent: 100, average_severity: 2.5, latest_report_at: "2026-09-19T11:00:00Z" }
 const quiet = { total_reports: 0, reports_today: 0, previous_period_reports: 0, change_percent: 0, average_severity: null, latest_report_at: null }
 
 export const mapData: LocationMapResponse = {
-    center: { latitude: 37.2296, longitude: -80.4139 }, radius_km: 3, days: 7,
+    center: { latitude: 37.2274294, longitude: -80.4222303 }, radius_km: 3, days: 7,
     generated_at: "2026-09-19T12:00:00Z", unmapped_locations: 1,
     summary: busy,
     locations: [
@@ -24,7 +24,7 @@ export const dormList: DormListResponse = {
     ],
 }
 
-export function dormDetail(id: number, days = 7): DormDetail {
+export function dormDetail(id: number, days: ReportPeriod = 7): DormDetail {
     const dorm = dormList.dorms.find((row) => row.id === id)!
     const { stats, ...summary } = dorm
     return {
@@ -43,7 +43,7 @@ export async function mockData(page: Page) {
     await page.route(/\/api\/dorms\?/, (route) => route.fulfill({ json: dormList }))
     await page.route(/\/api\/dorms\/\d+\?/, (route) => {
         const url = new URL(route.request().url())
-        return route.fulfill({ json: dormDetail(Number(url.pathname.split("/").pop()), Number(url.searchParams.get("days"))) })
+        return route.fulfill({ json: dormDetail(Number(url.pathname.split("/").pop()), url.searchParams.get("days") === "all" ? "all" : Number(url.searchParams.get("days"))) })
     })
 }
 
@@ -55,15 +55,23 @@ export async function mockGoogleMaps(page: Page) {
             center: { lat: number; lng: number }
             constructor(container: HTMLElement, options: { center: { lat: number; lng: number } }) {
                 this.container = container
-                this.center = options.center
+                this.setCenter(options.center)
+                container.addEventListener("test-pan", () => this.setCenter({ lat: 40, lng: -74 }))
                 container.dataset.mapReady = "true"
             }
-            fitBounds(bounds: { center: { lat: number; lng: number } }) { this.center = bounds.center }
+            setCenter(center: { lat: number; lng: number }) {
+                this.center = center
+                this.container.dataset.center = JSON.stringify(center)
+            }
+            fitBounds(bounds: { center: { lat: number; lng: number } }) { this.setCenter(bounds.center) }
             getCenter() { return { lat: () => this.center.lat, lng: () => this.center.lng } }
         }
         class TestCircle {
             options: object
-            constructor(options: object) { this.options = options }
+            constructor(options: { map: TestMap; radius: number }) {
+                this.options = options
+                options.map.container.dataset.radius = String(options.radius)
+            }
             getBounds() { return this.options }
             setMap() {}
         }

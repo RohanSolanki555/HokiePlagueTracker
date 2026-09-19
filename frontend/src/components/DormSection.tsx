@@ -4,10 +4,10 @@ import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
 import { Input } from "@/components/ui/input"
-import { api, type DormDetail, type DormListResponse } from "@/services/api"
+import { api, type DormDetail, type DormListResponse, type ReportPeriod } from "@/services/api"
 
 interface Props {
-    days: number
+    days: ReportPeriod
     refresh: number
     selectedId: number | null
     onSelect: (id: number) => void
@@ -31,7 +31,7 @@ function message(reason: unknown, fallback: string) {
 
 export default function DormSection({ days, refresh, selectedId, onSelect }: Props) {
     const [search, setSearch] = useState("")
-    const [list, setList] = useState<{ days: number; refresh: number; data: DormListResponse | null; error: string | null } | null>(null)
+    const [list, setList] = useState<{ days: ReportPeriod; refresh: number; data: DormListResponse | null; error: string | null } | null>(null)
     const [detail, setDetail] = useState<{ key: string; refresh: number; data: DormDetail | null; error: string | null } | null>(null)
 
     useEffect(() => {
@@ -125,9 +125,9 @@ function DormDetailView({ detail }: { detail: DormDetail }) {
             <dl className="dash-tiles">
                 {[
                     ["Reports today", stats.reports_today],
-                    [`Reports in ${detail.days} days`, stats.total_reports],
+                    [detail.days === "all" ? "All-time reports" : `Reports in ${detail.days} days`, stats.total_reports],
                     ["Average severity", stats.average_severity?.toFixed(2) ?? "No scores"],
-                    ["Change from prior period", trend(stats.change_percent)],
+                    ["Change from prior period", detail.days === "all" ? "N/A" : trend(stats.change_percent)],
                 ].map(([label, value]) => <div key={label} className="dash-tile"><dt>{label}</dt><dd>{value}</dd></div>)}
             </dl>
             <p className="dash-latest">{stats.latest_report_at ? `Latest report: ${new Date(stats.latest_report_at).toLocaleString()}` : "No reports during this period."}</p>

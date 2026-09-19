@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { MapPin, Search } from "lucide-react"
+import { MapPin, LocateFixed } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { loadGoogleMaps, mapsApiKey, mapsMapId } from "@/lib/google-maps"
 import type { HomeArea, MapLocation, MapQuery } from "@/services/api"
@@ -10,13 +10,13 @@ interface Props {
     homeAreas: HomeArea[]
     selectedId: number | null
     onSelect: (id: number) => void
-    onCenterChange: (latitude: number, longitude: number) => void
 }
 
 type Runtime = Awaited<ReturnType<typeof loadGoogleMaps>> & { map: google.maps.Map }
 
-export default function LocationMap({ query, locations, homeAreas, selectedId, onSelect, onCenterChange }: Props) {
+export default function LocationMap({ query, locations, homeAreas, selectedId, onSelect }: Props) {
     const container = useRef<HTMLDivElement>(null)
+    const initialCenter = useRef({ lat: query.latitude, lng: query.longitude })
     const [runtime, setRuntime] = useState<Runtime | null>(null)
     const [error, setError] = useState<string | null>(null)
 
@@ -41,7 +41,7 @@ export default function LocationMap({ query, locations, homeAreas, selectedId, o
             if (!unauthorized) setError(null)
             map = new libraries.maps.Map(container.current, {
                 mapId: mapsMapId,
-                center: { lat: 37.2296, lng: -80.4139 },
+                center: initialCenter.current,
                 zoom: 14,
                 mapTypeControl: false,
                 streetViewControl: false,
@@ -72,7 +72,7 @@ export default function LocationMap({ query, locations, homeAreas, selectedId, o
         const bounds = circle.getBounds()
         if (bounds) runtime.map.fitBounds(bounds, 35)
         const centerPin = new runtime.marker.AdvancedMarkerElement({
-            map: runtime.map, position: center, title: "Search center", zIndex: 0,
+            map: runtime.map, position: center, title: "Drillfield", zIndex: 0,
         })
         centerPin.append(new runtime.marker.PinElement({
             background: "#ffffff", borderColor: "#52525b", glyphColor: "#52525b", glyphText: "+",
@@ -147,9 +147,8 @@ export default function LocationMap({ query, locations, homeAreas, selectedId, o
                 <div className="dash-map-fallback dash-map-loading" role="status">Loading Google Maps…</div>
             ) : (
                 <Button className="dash-search-area" onClick={() => {
-                    const center = runtime.map.getCenter()
-                    if (center) onCenterChange(center.lat(), center.lng())
-                }}><Search aria-hidden="true" /> Search this area</Button>
+                    runtime.map.setCenter({ lat: query.latitude, lng: query.longitude })
+                }}><LocateFixed aria-hidden="true" /> Center on Drillfield</Button>
             )}
         </div>
     )

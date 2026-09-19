@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Activity, ArrowRight, CalendarDays, Gauge, LogOut, RefreshCw, ShieldCheck, TrendingUp } from "lucide-react"
 import logo from "@/assets/HokiePlagueTrackerIcon.svg"
 import "./Dashboard.css"
@@ -7,10 +7,9 @@ import LocationMap from "@/components/LocationMap"
 import ReportForm, { type SubmittedReport } from "@/components/ReportForm"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { api, type LocationMapResponse, type MapQuery } from "@/services/api"
 
-const CAMPUS: MapQuery = { latitude: 37.2296, longitude: -80.4139, radius_km: 3, days: 7 }
+const CAMPUS: MapQuery = { latitude: 37.2274294, longitude: -80.4222303, radius_km: 3, days: 7 }
 const EMPTY_LOCATIONS: LocationMapResponse["locations"] = []
 const EMPTY_HOME_AREAS: LocationMapResponse["home_areas"] = []
 
@@ -31,10 +30,6 @@ interface Props {
 
 export default function Dashboard({ email, onSignOut, accountError }: Props) {
     const [query, setQuery] = useState(CAMPUS)
-    const [latitude, setLatitude] = useState(String(CAMPUS.latitude))
-    const [longitude, setLongitude] = useState(String(CAMPUS.longitude))
-    const [radius, setRadius] = useState(String(CAMPUS.radius_km))
-    const [days, setDays] = useState(String(CAMPUS.days))
     const [refresh, setRefresh] = useState(0)
     const [result, setResult] = useState<{
         query: MapQuery
@@ -72,30 +67,12 @@ export default function Dashboard({ email, onSignOut, accountError }: Props) {
     }, [])
 
     const selectLocation = useCallback((id: number) => setSelectedId(id), [])
-    const changeCenter = useCallback((lat: number, lng: number) => {
-        setLatitude(String(lat))
-        setLongitude(String(lng))
-        setQuery((current) => ({ ...current, latitude: lat, longitude: lng }))
-    }, [])
 
     // Never move the map to a submitted report: home reports have no public position.
     const showSubmittedReport = useCallback(({ dormId }: SubmittedReport) => {
         if (dormId !== null) setSelectedId(dormId)
         setRefresh((value) => value + 1)
     }, [])
-
-    function applyFilters(event: FormEvent<HTMLFormElement>) {
-        event.preventDefault()
-        setQuery({ latitude: Number(latitude), longitude: Number(longitude), radius_km: Number(radius), days: Number(days) })
-    }
-
-    function resetCampus() {
-        setLatitude(String(CAMPUS.latitude))
-        setLongitude(String(CAMPUS.longitude))
-        setRadius(String(CAMPUS.radius_km))
-        setDays(String(CAMPUS.days))
-        setQuery({ ...CAMPUS })
-    }
 
     const loading = result?.query !== query || result?.refresh !== refresh
     // Keep the last counts visible during refreshes of the same area.
@@ -106,10 +83,10 @@ export default function Dashboard({ email, onSignOut, accountError }: Props) {
 
     const stats = [
         { label: "Reports today", value: summary?.reports_today, note: "Since midnight · Eastern time", icon: CalendarDays, tone: "" },
-        { label: `Reports in ${query.days} days`, value: summary?.total_reports, note: "Dorm and off-campus reports in this area", icon: Activity, tone: "" },
+        { label: query.days === "all" ? "All-time reports" : `Reports in ${query.days} days`, value: summary?.total_reports, note: "Dorm and off-campus reports in this area", icon: Activity, tone: "" },
         {
-            label: "Change from prior period", value: summary ? trend(summary.change_percent) : undefined,
-            note: `Compared with the previous ${query.days} days`, icon: TrendingUp,
+            label: "Change from prior period", value: query.days === "all" ? "N/A" : summary ? trend(summary.change_percent) : undefined,
+            note: query.days === "all" ? "No prior period for all time" : `Compared with the previous ${query.days} days`, icon: TrendingUp,
             tone: !summary?.change_percent ? "" : summary.change_percent > 0 ? "up" : "down",
         },
         { label: "Average severity", value: summary?.average_severity?.toFixed(2), note: "Reported severity scores", icon: Gauge, tone: "" },
@@ -171,47 +148,36 @@ export default function Dashboard({ email, onSignOut, accountError }: Props) {
 
                 <div className="dash-grid">
                     <div className="dash-main">
-                        <section className="dash-panel dash-filters">
-                            <span className="dash-label">Explore an area</span>
-                            <p className="dash-panel-desc">Enter a center point, or move the map and choose “Search this area.”</p>
-                            <form onSubmit={applyFilters} className="dash-filter-form">
-                                <label className="dash-field"><span>Latitude</span>
-                                    <Input className="dash-input" type="number" min={-90} max={90} step="any" required value={latitude} onChange={(event) => setLatitude(event.target.value)} />
-                                </label>
-                                <label className="dash-field"><span>Longitude</span>
-                                    <Input className="dash-input" type="number" min={-180} max={180} step="any" required value={longitude} onChange={(event) => setLongitude(event.target.value)} />
-                                </label>
-                                <label className="dash-field"><span>Search radius</span>
-                                    <select className="dash-select" value={radius} onChange={(event) => setRadius(event.target.value)}>
-                                        {[0.5, 1, 3, 5, 10, 25, 100].map((value) => <option key={value} value={value}>{value} km</option>)}
-                                    </select>
-                                </label>
-                                <label className="dash-field"><span>Report period</span>
-                                    <select className="dash-select" value={days} onChange={(event) => setDays(event.target.value)}>
-                                        {[7, 14, 30].map((value) => <option key={value} value={value}>Last {value} days</option>)}
-                                    </select>
-                                </label>
-                                <div className="dash-filter-actions">
-                                    <p className="dash-filter-summary">Within {query.radius_km} km of {query.latitude.toFixed(4)}, {query.longitude.toFixed(4)} · Last {query.days} days</p>
-                                    <div className="dash-filter-buttons">
-                                        <Button type="button" variant="outline" className="dash-btn-outline" onClick={resetCampus}>Virginia Tech</Button>
-                                        <Button type="submit" className="dash-btn-primary">Update map</Button>
-                                    </div>
-                                </div>
-                            </form>
-                        </section>
-
                         <div className="dash-panel dash-map-card">
-                            <LocationMap query={query} locations={locations} homeAreas={data?.home_areas ?? EMPTY_HOME_AREAS} selectedId={selectedId} onSelect={selectLocation} onCenterChange={changeCenter} />
+                            <LocationMap query={query} locations={locations} homeAreas={data?.home_areas ?? EMPTY_HOME_AREAS} selectedId={selectedId} onSelect={selectLocation} />
                             <div className="dash-map-foot">
                                 <p className="dash-map-count">{data ? `${locations.length} ${locations.length === 1 ? "dorm" : "dorms"} in this area` : loading ? "Loading map data…" : "Data unavailable"}</p>
                                 <ul className="dash-legend" aria-label="Map legend">
                                     <li><span className="dash-dot dash-dot-dorm" aria-hidden="true" />Dorm with reports</li>
                                     <li><span className="dash-dot dash-dot-home" aria-hidden="true" />Off-campus area</li>
-                                    <li><span className="dash-dot dash-dot-center" aria-hidden="true">+</span>Search center</li>
+                                    <li><span className="dash-dot dash-dot-center" aria-hidden="true">+</span>Drillfield</li>
                                 </ul>
                             </div>
-                            <p className="dash-caption">A dorm gets a pin once it has a report. Pin numbers show reports in the selected period and refresh every 15 seconds. Off-campus reports appear only as approximate gray dots that cannot be selected. Select a dorm pin or a dorm below to view its statistics.</p>
+                            <div className="dash-map-filters" role="group" aria-label="Map filters">
+                                <label className="dash-field"><span>Report period</span>
+                                    <select className="dash-select" value={query.days} onChange={(event) => {
+                                        const days = Number(event.target.value)
+                                        setQuery((current) => ({ ...current, days }))
+                                    }}>
+                                        <option value="30">30 days</option>
+                                        <option value="14">14 days</option>
+                                        <option value="7">7 days</option>
+                                    </select>
+                                </label>
+                                <label className="dash-field"><span>Circle radius</span>
+                                    <select className="dash-select" value={query.radius_km} onChange={(event) => {
+                                        const radius_km = Number(event.target.value)
+                                        setQuery((current) => ({ ...current, radius_km }))
+                                    }}>
+                                        {[0.5, 1, 3, 5].map((radius) => <option key={radius} value={radius}>{radius} km</option>)}
+                                    </select>
+                                </label>
+                            </div>
                         </div>
                     </div>
 

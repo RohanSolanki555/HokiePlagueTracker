@@ -40,23 +40,17 @@ test("dorm list and statistics work without a Google key", async ({ page }) => {
     await expect(page.getByText("No dorms match that name.")).toBeVisible()
 })
 
-test("coordinates, radius, and period reach the API; reset returns to campus", async ({ page }) => {
+test("the dashboard requests the Drillfield area without exploration controls", async ({ page }) => {
     await mockData(page)
+    const request = page.waitForRequest("**/api/locations/map?*")
     await page.goto("/")
-    await page.getByLabel("Latitude", { exact: true }).fill("40.7128")
-    await page.getByLabel("Longitude", { exact: true }).fill("-74.006")
-    await page.getByLabel("Search radius").selectOption("10")
-    await page.getByLabel("Report period").selectOption("30")
-    const request = page.waitForRequest((request) => request.url().includes("latitude=40.7128"))
-    const dormRequest = page.waitForRequest((request) => request.url().includes("/api/dorms?days=30"))
-    await page.getByRole("button", { name: "Update map", exact: true }).click()
-    const url = new URL((await request).url())
-    expect(Object.fromEntries(url.searchParams)).toEqual({ latitude: "40.7128", longitude: "-74.006", radius_km: "10", days: "30" })
-    await dormRequest
-    await expect(page.getByText("Reports in 30 days", { exact: true })).toBeVisible()
-    await page.getByRole("button", { name: "Virginia Tech", exact: true }).click()
-    await expect(page.getByLabel("Latitude", { exact: true })).toHaveValue("37.2296")
-    await expect(page.getByLabel("Search radius")).toHaveValue("3")
+    expect(Object.fromEntries(new URL((await request).url()).searchParams)).toEqual({
+        latitude: "37.2274294", longitude: "-80.4222303", radius_km: "3", days: "7",
+    })
+    await expect(page.getByText("Explore an area", { exact: true })).toHaveCount(0)
+    await expect(page.getByLabel("Latitude", { exact: true })).toHaveCount(0)
+    await expect(page.getByRole("button", { name: "Update map", exact: true })).toHaveCount(0)
+    await expect(page.getByText("Reports in 7 days", { exact: true })).toBeVisible()
 })
 
 test("failed requests show an error and can recover", async ({ page }) => {
@@ -155,8 +149,8 @@ test("a home report sends only the address, and never moves the map or selects a
     await submit(page).click()
     await expect(page.getByRole("status").filter({ hasText: "approximate area" })).toBeVisible()
     await expect(page.getByLabel("Street address", { exact: true })).toHaveValue("")
-    await expect(page.getByLabel("Latitude", { exact: true })).toHaveValue("37.2296")
-    await expect(page.getByLabel("Longitude", { exact: true })).toHaveValue("-80.4139")
+    await expect(page.getByLabel("Circle radius")).toHaveValue("3")
+    await expect(page.getByLabel("Report period")).toHaveValue("7")
     for (const dorm of ["Pritchard Hall", "Slusher Hall"]) {
         await expect(page.getByRole("button", { name: new RegExp(dorm) })).toHaveAttribute("aria-pressed", "false")
     }
