@@ -66,13 +66,16 @@ export interface HealthResponse {
 
 export interface Report {
     id: number
-    location_id: number
+    location_id: number | null
     severity: number
     created_at: string
 }
 
 export interface CreateReportRequest {
-    location_id: number
+    address: string
+    illness: string
+    flu_type?: "A" | "B"
+    location_id?: number | null
     severity: number
 }
 
