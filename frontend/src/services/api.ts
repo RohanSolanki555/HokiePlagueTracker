@@ -1,9 +1,7 @@
 import { supabase } from "./auth"
 
-const API_URL = (
-    import.meta.env.VITE_API_URL ??
-    "http://localhost:5000/api"
-).replace(/\/$/, "")
+const API_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:5000/api"
 
 
 async function request<T>(
