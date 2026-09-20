@@ -101,8 +101,8 @@ export default function LocationMap({ query, locations, homeAreas, selectedId, h
                 gmpClickable: true,
             })
             const pin = new runtime.marker.PinElement({
-                background: selected ? "#ef620f" : "#801036",
-                borderColor: selected ? "#a64108" : "#5a0b26", glyphColor: "#ffffff",
+                background: "#801036",
+                borderColor: "#5a0b26", glyphColor: "#ffffff",
                 glyphText: String(location.stats.total_reports), scale: selected ? 1.2 : 1,
             })
             marker.append(pin)
