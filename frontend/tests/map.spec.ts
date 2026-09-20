@@ -294,7 +294,7 @@ test("circle radius updates the map and API while staying centered on the Drillf
     await page.screenshot({ path: test.info().outputPath("map-filters-mobile.png"), fullPage: true })
 })
 
-test("selecting a dorm brings its pin into view, and hovering the list lifts the pin", async ({ page }) => {
+test("pins grow on hover, stay largest when selected, and follow dorm selection", async ({ page }) => {
     await mockGoogleMaps(page)
     await mockData(page)
     await page.goto("/")
@@ -304,15 +304,29 @@ test("selecting a dorm brings its pin into view, and hovering the list lifts the
 
     const scale = () => page.locator("test-pin", { hasText: "6" }).evaluate((pin) => (pin as HTMLElement & { scale: number }).scale)
     await listRow(page, "Pritchard Hall").hover()
-    await expect.poll(scale).toBe(1.3)
+    await expect.poll(scale).toBe(1.2)
     await page.mouse.move(0, 0)
     await expect.poll(scale).toBe(1)
 
+    const pin = page.getByRole("button", { name: "Pritchard Hall: 6 reports", exact: true })
+    await pin.hover()
+    await expect.poll(scale).toBe(1.2)
+    await pin.click()
+    await expect.poll(scale).toBe(1.4)
+    await page.mouse.move(0, 0)
+    await expect.poll(scale).toBe(1.4)
+    await pin.hover()
+    await expect.poll(scale).toBe(1.4)
+
     await listRow(page, "Pritchard Hall").click()
+    await expect.poll(scale).toBe(1.4)
     const pritchard = JSON.stringify({ lat: 37.2284, lng: -80.4198 })
     await expect(canvas).toHaveAttribute("data-panned", pritchard)
     // Slusher Hall has no reports and so no pin: selecting it must not pan anywhere.
     await listRow(page, "Slusher Hall").click()
+    // Its shorter detail panel can move a different dorm row under the pointer.
+    await page.mouse.move(0, 0)
+    await expect.poll(scale).toBe(1)
     await expect(listRow(page, "Slusher Hall")).toHaveAttribute("aria-pressed", "true")
     await expect(canvas).toHaveAttribute("data-panned", pritchard)
 })
