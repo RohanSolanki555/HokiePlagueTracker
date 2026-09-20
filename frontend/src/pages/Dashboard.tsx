@@ -140,7 +140,7 @@ export default function Dashboard({ email, onSignOut, accountError }: Props) {
                     <div className="dash-hero-body">
                         <div className="dash-hero-copy">
                             <p className="dash-eyebrow">Hokies helping Hokies</p>
-                            <h1 className="dash-title">Campus health, <span>in real time.</span></h1>
+                            <h1 className="dash-title">Campus health <span>in real time.</span></h1>
                             <p className="dash-lead">Explore recent illness reports around Virginia Tech, and report how you’re feeling to help others stay ahead.</p>
                         </div>
                         <div className="dash-hero-actions">
