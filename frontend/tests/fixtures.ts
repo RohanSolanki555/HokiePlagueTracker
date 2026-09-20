@@ -24,6 +24,16 @@ export const dormList: DormListResponse = {
     ],
 }
 
+export const illnessSummary = {
+    days: 7, generated_at: "2026-09-19T12:00:00Z", total_reports: 10,
+    illnesses: [
+        { illness: "Common cold", reports: 4 },
+        { illness: "Flu A", reports: 3 },
+        { illness: "Flu B", reports: 2 },
+        { illness: "Stomach bug", reports: 1 },
+    ],
+}
+
 export function dormDetail(id: number, days: ReportPeriod = 7): DormDetail {
     const dorm = dormList.dorms.find((row) => row.id === id)!
     const { stats, ...summary } = dorm
@@ -39,6 +49,10 @@ export function dormDetail(id: number, days: ReportPeriod = 7): DormDetail {
 
 export async function mockData(page: Page) {
     await mockSignedIn(page)
+    await page.route("**/api/stats/illnesses?*", (route) => {
+        const period = new URL(route.request().url()).searchParams.get("days")
+        return route.fulfill({ json: { ...illnessSummary, days: period === "all" ? "all" : Number(period) } })
+    })
     await page.route("**/api/locations/map?*", (route) => route.fulfill({ json: mapData }))
     await page.route(/\/api\/dorms\?/, (route) => route.fulfill({ json: dormList }))
     await page.route(/\/api\/dorms\/\d+\?/, (route) => {

@@ -3,6 +3,7 @@ import { Activity, ArrowRight, CalendarDays, Gauge, LogOut, Plus, RefreshCw, Shi
 import logo from "@/assets/HokiePlagueTrackerIcon.svg"
 import "./Dashboard.css"
 import DormSection from "@/components/DormSection"
+import IllnessSummary from "@/components/IllnessSummary"
 import LiveStatus from "@/components/LiveStatus"
 import LocationMap from "@/components/LocationMap"
 import ReportForm, { type SubmittedReport } from "@/components/ReportForm"
@@ -171,6 +172,8 @@ export default function Dashboard({ email, onSignOut, accountError }: Props) {
                         </CardContent>
                     </Card>)}
                 </div>
+
+                <IllnessSummary days={query.days} refresh={refresh} />
 
                 {error && <div role="alert" className="dash-feedback dash-feedback-action">
                     <span>{error}</span><Button variant="outline" className="dash-btn-outline" onClick={() => setRefresh((value) => value + 1)}>Try again</Button>

@@ -25,7 +25,7 @@ ILLNESSES = (
     "Sinus infection",
     "Other",
 )
-MAX_FLOOR = 60
+MAX_FLOOR = 12
 
 
 def is_positive_int(value, maximum=None):

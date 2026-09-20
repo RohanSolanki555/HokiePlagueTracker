@@ -51,6 +51,9 @@ export const api = {
     getSummary: () =>
         request<Summary>("/stats/summary"),
 
+    getIllnessSummary: (days: ReportPeriod, signal?: AbortSignal) =>
+        request<IllnessSummaryResponse>(`/stats/illnesses?days=${days}`, { signal }),
+
     getDorms: (days: ReportPeriod, signal?: AbortSignal) =>
         request<DormListResponse>(`/dorms?days=${days}`, { signal }),
 
@@ -109,6 +112,13 @@ export interface Summary {
 }
 
 export type ReportPeriod = number | "all"
+
+export interface IllnessSummaryResponse {
+    days: ReportPeriod
+    generated_at: string
+    total_reports: number
+    illnesses: { illness: string; reports: number }[]
+}
 
 export interface MapQuery {
     latitude: number
