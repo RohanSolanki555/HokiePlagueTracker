@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react"
+import { useRef, useState, type FormEvent } from "react"
 import { ArrowLeft, ArrowRight, CheckCircle2, CircleAlert, Eye, EyeOff, LoaderCircle, LockKeyhole, Mail, ShieldCheck } from "lucide-react"
 import logo from "@/assets/HokiePlagueTrackerIcon.svg"
 import "./Auth.css"
@@ -7,7 +7,7 @@ import { supabase, isVtEmail } from "@/services/auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
-type Mode = "login" | "signup" | "setup" | "forgot" | "reset"
+type Mode = "login" | "signup" | "setup" | "forgot" | "reset" | "recovery" | "verify"
 
 export default function Auth({ mode, user, initialError = "" }: { mode: Mode; user: User | null; initialError?: string }) {
     const [email, setEmail] = useState("")
@@ -17,8 +17,12 @@ export default function Auth({ mode, user, initialError = "" }: { mode: Mode; us
     const [message, setMessage] = useState("")
     const [busy, setBusy] = useState(false)
     const [showPassword, setShowPassword] = useState(false)
+    const verifying = useRef(false)
+    const [tokenHash] = useState(() => new URLSearchParams(window.location.search).get("token_hash")?.trim() ?? "")
+    const confirmingEmail = mode === "recovery" || mode === "verify"
+    const newLinkPath = mode === "recovery" ? "/forgot-password" : "/signup"
     const settingPassword = mode === "setup" || mode === "reset"
-    const title = { login: "Welcome back", signup: "Create your account", setup: "Finish setting up your account", forgot: "Reset your password", reset: "Choose a new password" }[mode]
+    const title = { login: "Welcome back", signup: "Create your account", setup: "Finish setting up your account", forgot: "Reset your password", reset: "Choose a new password", recovery: "Reset your password", verify: "Verify your VT email" }[mode]
 
     const description = {
         login: "Sign in to see what's going around campus.",
@@ -26,7 +30,38 @@ export default function Auth({ mode, user, initialError = "" }: { mode: Mode; us
         setup: "Your email is verified. Create a password to get started.",
         forgot: "Enter your VT email and we'll send you a link to reset your password.",
         reset: "Set a new password and get back to your campus community.",
+        recovery: "Press Continue to verify your password reset request, then choose a new password.",
+        verify: "Press Continue to verify your email, then create your password.",
     }[mode]
+
+    // Deliberately user-triggered: visiting or previewing the link must not redeem it.
+    async function confirmEmailLink() {
+        if (!supabase || !tokenHash || verifying.current) return
+        verifying.current = true
+        setBusy(true)
+        setError("")
+        try {
+            const { data, error } = await supabase.auth.verifyOtp({
+                token_hash: tokenHash,
+                type: mode === "recovery" ? "recovery" : "email",
+            })
+            if (error) throw error
+            if (!data.session || !data.user?.email_confirmed_at || !isVtEmail(data.user.email ?? "")) {
+                setError("A verified Virginia Tech email is required. Request a new link using your @vt.edu address.")
+                return
+            }
+            // Replace the token-bearing history entry after the session is persisted.
+            window.location.replace(mode === "recovery" ? "/auth/reset" : "/auth/setup")
+        } catch (error) {
+            const expired = typeof error === "object" && error !== null && "code" in error && error.code === "otp_expired"
+            setError(expired
+                ? "This email link is invalid or has expired. Request a new link below."
+                : "Unable to verify this email link. Try again or request a new link below.")
+        } finally {
+            verifying.current = false
+            setBusy(false)
+        }
+    }
 
     async function submit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault()
@@ -56,11 +91,11 @@ export default function Auth({ mode, user, initialError = "" }: { mode: Mode; us
                 if (result.error) throw result.error
                 window.location.assign(result.data.user.app_metadata.password_setup_complete ? "/" : "/auth/setup")
             } else if (mode === "signup") {
-                const result = await supabase.auth.signInWithOtp({ email: normalizedEmail, options: { emailRedirectTo: `${window.location.origin}/auth/setup` } })
+                const result = await supabase.auth.signInWithOtp({ email: normalizedEmail, options: { emailRedirectTo: `${window.location.origin}/auth/verify` } })
                 if (result.error) throw result.error
                 setMessage(`Check ${normalizedEmail} for your verification link. If you don't see it in your inbox, check Virginia Tech Microsoft 365 Quarantine`)
             } else {
-                const result = await supabase.auth.resetPasswordForEmail(normalizedEmail, { redirectTo: `${window.location.origin}/auth/reset` })
+                const result = await supabase.auth.resetPasswordForEmail(normalizedEmail, { redirectTo: `${window.location.origin}/auth/recovery` })
                 if (result.error) throw result.error
                 setMessage("If an account exists for that email, a password reset link has been sent. If you don't see it in your inbox, check Virginia Tech Microsoft 365 Quarantine")
             }
@@ -95,7 +130,16 @@ export default function Auth({ mode, user, initialError = "" }: { mode: Mode; us
                         <h1 className="auth-title" id="auth-title">{title}</h1>
                         <p className="auth-description" id="auth-description">{description}</p>
 
-                        {settingPassword && !user ? (
+                        {confirmingEmail ? (
+                            <div className="auth-fields">
+                                {!tokenHash && <p role="alert" className="auth-feedback">This email link is invalid. Request a new link below.</p>}
+                                <Button type="button" className="auth-submit" disabled={busy || !tokenHash} onClick={confirmEmailLink}>
+                                    <span>{busy ? "Verifying..." : "Continue"}</span>
+                                    {busy ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <ArrowRight aria-hidden="true" />}
+                                </Button>
+                                <a className="auth-link" href={newLinkPath}>Request a new link</a>
+                            </div>
+                        ) : settingPassword && !user ? (
                             <div role="alert" className="auth-feedback">
                                 <CircleAlert aria-hidden="true" />
                                 <p>Open a valid email link to continue. <a className="auth-link" href={mode === "reset" ? "/forgot-password" : "/signup"}>Request a new link</a>.</p>

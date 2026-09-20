@@ -36,8 +36,8 @@ function App() {
     if (loading) return <p role="status" className="p-8">Loading your session...</p>
     const user = session?.user ?? null
     const verified = user && isVtEmail(user.email ?? "") && user.email_confirmed_at
-    if (["/login", "/signup", "/forgot-password", "/auth/setup", "/auth/reset"].includes(path)) {
-        const mode = path === "/signup" ? "signup" : path === "/forgot-password" ? "forgot" : path === "/auth/setup" ? "setup" : path === "/auth/reset" ? "reset" : "login"
+    if (["/login", "/signup", "/forgot-password", "/auth/setup", "/auth/reset", "/auth/recovery", "/auth/verify"].includes(path)) {
+        const mode = path === "/signup" ? "signup" : path === "/forgot-password" ? "forgot" : path === "/auth/setup" ? "setup" : path === "/auth/reset" ? "reset" : path === "/auth/recovery" ? "recovery" : path === "/auth/verify" ? "verify" : "login"
         return <Auth key={mode + error} mode={mode} user={verified ? user : null} initialError={error} />
     }
     if (!verified) return <Auth key={error} mode="login" user={null} initialError={error || (user ? "Sign in with a verified @vt.edu account." : "")} />
