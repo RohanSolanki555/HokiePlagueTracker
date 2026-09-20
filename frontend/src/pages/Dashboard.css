@@ -144,9 +144,11 @@
 
 /* ---------- Layout ---------- */
 
-.dash-grid { display: grid; grid-template-columns: minmax(0, 1fr) 440px; align-items: start; gap: 24px; }
-.dash-main { display: grid; min-width: 0; gap: 24px; }
-.dash-side { position: sticky; top: 24px; min-width: 0; }
+/* Both columns stretch to the taller one; the map absorbs the difference so the card bottoms line up. */
+.dash-grid { display: grid; grid-template-columns: minmax(0, 1fr) 440px; align-items: stretch; gap: 24px; }
+.dash-main { display: flex; flex-direction: column; min-width: 0; gap: 24px; }
+.dash-side { display: flex; flex-direction: column; min-width: 0; }
+.dash-side > .dash-report { flex: 1; }
 
 .dash-page .dash-panel {
     gap: 0;
@@ -245,8 +247,8 @@
 
 /* ---------- Map ---------- */
 
-.dash-map-card { overflow: hidden; }
-.dash-map { position: relative; height: clamp(460px, 64vh, 660px); overflow: hidden; background: #f4ece8; }
+.dash-map-card { display: flex; flex: 1; flex-direction: column; overflow: hidden; }
+.dash-map { position: relative; flex: 1 1 auto; min-height: 460px; overflow: hidden; background: #f4ece8; }
 .dash-map-canvas { position: absolute; inset: 0; }
 
 .dash-map-fallback {
@@ -396,7 +398,8 @@
 
 @media (max-width: 1180px) {
     .dash-grid { grid-template-columns: minmax(0, 1fr); }
-    .dash-side { position: static; }
+    .dash-map-card { flex: none; }
+    .dash-map { flex: none; height: clamp(460px, 64vh, 660px); min-height: 0; }
     .dash-dorms { grid-template-columns: minmax(0, 1fr); }
 }
 
@@ -442,4 +445,61 @@
 
 @media (prefers-reduced-motion: reduce) {
     .dash-page *, .dash-page *::before, .dash-page *::after { transition: none !important; animation: none !important; }
+}
+
+/* ---------- Motion ---------- */
+
+@keyframes dash-rise {
+    from { opacity: 0; transform: translateY(16px); }
+}
+
+@keyframes dash-pop {
+    from { opacity: 0; transform: translateY(6px) scale(0.97); }
+}
+
+@keyframes dash-shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+}
+
+/* "backwards" only holds the starting frame during the delay, so hover transforms still work afterwards. */
+.dash-hero { animation: dash-rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) backwards; }
+.dash-stat { animation: dash-rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) backwards; }
+.dash-stat:nth-child(1) { animation-delay: 0.08s; }
+.dash-stat:nth-child(2) { animation-delay: 0.14s; }
+.dash-stat:nth-child(3) { animation-delay: 0.2s; }
+.dash-stat:nth-child(4) { animation-delay: 0.26s; }
+.dash-map-card { animation: dash-rise 0.6s 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) backwards; }
+.dash-side > .dash-report { animation: dash-rise 0.6s 0.38s cubic-bezier(0.2, 0.7, 0.2, 1) backwards; }
+.dash-dorms > * { animation: dash-rise 0.6s 0.46s cubic-bezier(0.2, 0.7, 0.2, 1) backwards; }
+.dash-feedback { animation: dash-pop 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2) backwards; }
+
+.dash-page .dash-stat { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+.dash-page .dash-stat:hover { transform: translateY(-3px); box-shadow: 0 22px 50px #54152a22; }
+.dash-page .dash-tile { transition: transform 0.15s ease, border-color 0.15s ease; }
+.dash-page .dash-tile:hover { transform: translateY(-2px); border-color: #efc9ac; }
+.dash-dorm:hover { transform: translateY(-1px); }
+
+.dash-skeleton {
+    display: inline-block;
+    width: 72px;
+    height: 34px;
+    border-radius: 9px;
+    vertical-align: middle;
+    background: linear-gradient(90deg, #f4ebe7 25%, #fdf7f3 50%, #f4ebe7 75%);
+    background-size: 200% 100%;
+    animation: dash-shimmer 1.4s linear infinite;
+}
+
+.dash-live[data-state="loading"] .dash-live-dot::after { animation-duration: 0.8s; }
+.dash-live[data-state="error"] { color: #ffd9c2; }
+.dash-live[data-state="error"] .dash-live-dot { background: #ffb4a0; }
+.dash-live[data-state="error"] .dash-live-dot::after { animation: none; }
+
+.dash-dorm-tools { display: flex; gap: 10px; }
+.dash-dorm-tools .dash-input-wrap { flex: 1; }
+.dash-page .dash-dorm-tools .dash-select { width: 148px; flex: none; }
+
+@media (max-width: 460px) {
+    .dash-page .dash-dorm-tools .dash-select { width: 118px; }
 }

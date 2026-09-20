@@ -11,7 +11,10 @@ interface Props {
     refresh: number
     selectedId: number | null
     onSelect: (id: number) => void
+    onHover?: (id: number | null) => void
 }
+
+type Sort = "reports" | "name"
 
 const illnessChart = { reports: { label: "Reports", color: "#801036" } } satisfies ChartConfig
 const dailyChart = { reports: { label: "Reports", color: "#ef620f" } } satisfies ChartConfig
@@ -29,8 +32,9 @@ function message(reason: unknown, fallback: string) {
     return reason instanceof Error ? reason.message : fallback
 }
 
-export default function DormSection({ days, refresh, selectedId, onSelect }: Props) {
+export default function DormSection({ days, refresh, selectedId, onSelect, onHover }: Props) {
     const [search, setSearch] = useState("")
+    const [sort, setSort] = useState<Sort>("reports")
     const [list, setList] = useState<{ days: ReportPeriod; refresh: number; data: DormListResponse | null; error: string | null } | null>(null)
     const [detail, setDetail] = useState<{ key: string; refresh: number; data: DormDetail | null; error: string | null } | null>(null)
 
@@ -61,6 +65,7 @@ export default function DormSection({ days, refresh, selectedId, onSelect }: Pro
     const listLoading = !list || list.days !== days || list.refresh !== refresh
     const dorms = listCurrent?.data?.dorms ?? []
     const filtered = dorms.filter((dorm) => dorm.name.toLowerCase().includes(search.trim().toLowerCase()))
+        .sort((a, b) => (sort === "reports" ? b.stats.total_reports - a.stats.total_reports : 0) || a.name.localeCompare(b.name))
     const detailCurrent = detail?.key === detailKey ? detail : null
     const detailLoading = selectedId !== null && (!detailCurrent || detailCurrent.refresh !== refresh)
     const detailData = selectedId === null ? null : detailCurrent?.data ?? null
@@ -75,15 +80,23 @@ export default function DormSection({ days, refresh, selectedId, onSelect }: Pro
                     <p className="dash-panel-desc">Pick a dorm to see how many reports it has and what is going around.</p>
                 </CardHeader>
                 <CardContent className="dash-dorm-body">
-                    <div className="dash-input-wrap">
-                        <Search className="dash-input-icon" aria-hidden="true" />
-                        <Input className="dash-input" aria-label="Filter dorms" placeholder="Filter dorms by name…" value={search} onChange={(event) => setSearch(event.target.value)} />
+                    <div className="dash-dorm-tools">
+                        <div className="dash-input-wrap">
+                            <Search className="dash-input-icon" aria-hidden="true" />
+                            <Input className="dash-input" aria-label="Filter dorms" placeholder="Filter dorms by name…" value={search} onChange={(event) => setSearch(event.target.value)} />
+                        </div>
+                        <select className="dash-select" aria-label="Sort dorms" value={sort} onChange={(event) => setSort(event.target.value as Sort)}>
+                            <option value="reports">Most reports</option>
+                            <option value="name">A–Z</option>
+                        </select>
                     </div>
                     {!listLoading && listCurrent?.error && <div role="alert" className="dash-feedback dash-feedback-action">
                         <span>{listCurrent.error}</span>
                     </div>}
                     <div className="dash-dorm-list" aria-busy={listLoading}>
-                        {filtered.map((dorm) => <button key={dorm.id} type="button" aria-pressed={selectedId === dorm.id} onClick={() => onSelect(dorm.id)} className="dash-dorm">
+                        {filtered.map((dorm) => <button key={dorm.id} type="button" aria-pressed={selectedId === dorm.id} onClick={() => onSelect(dorm.id)} className="dash-dorm"
+                            onMouseEnter={() => onHover?.(dorm.id)} onMouseLeave={() => onHover?.(null)}
+                            onFocus={(event) => { if (event.currentTarget.matches(":focus-visible")) onHover?.(dorm.id) }} onBlur={() => onHover?.(null)}>
                             <span className="dash-dorm-icon"><Building2 aria-hidden="true" /></span>
                             <span className="dash-dorm-text">
                                 <span className="dash-dorm-name">{dorm.name}</span>

@@ -65,6 +65,9 @@ export async function mockGoogleMaps(page: Page) {
             }
             fitBounds(bounds: { center: { lat: number; lng: number } }) { this.setCenter(bounds.center) }
             getCenter() { return { lat: () => this.center.lat, lng: () => this.center.lng } }
+            // Records the last pan without moving the centre, which other tests assert on.
+            getBounds() { return undefined }
+            panTo(position: { lat: number; lng: number }) { this.container.dataset.panned = JSON.stringify(position) }
         }
         class TestCircle {
             options: object

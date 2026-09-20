@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useState, type MouseEvent } from "react"
 import { Activity, ArrowRight, CalendarDays, Gauge, LogOut, RefreshCw, ShieldCheck, TrendingUp } from "lucide-react"
 import logo from "@/assets/HokiePlagueTrackerIcon.svg"
 import "./Dashboard.css"
 import DormSection from "@/components/DormSection"
+import LiveStatus from "@/components/LiveStatus"
 import LocationMap from "@/components/LocationMap"
 import ReportForm, { type SubmittedReport } from "@/components/ReportForm"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useCountUp } from "@/lib/use-count-up"
 import { api, type LocationMapResponse, type MapQuery } from "@/services/api"
 
 const CAMPUS: MapQuery = { latitude: 37.2274294, longitude: -80.4222303, radius_km: 3, days: 7 }
@@ -20,6 +22,23 @@ function initialSelection() {
 
 function trend(value: number | null) {
     return value === null ? "New reports" : `${value > 0 ? "+" : ""}${value}%`
+}
+
+// Glide to the form only for this button; a page-wide smooth scroll would animate every programmatic scroll.
+function scrollToReport(event: MouseEvent<HTMLAnchorElement>) {
+    const form = document.getElementById("report")
+    if (!form) return
+    event.preventDefault()
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    form.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" })
+}
+
+const whole = (value: number) => String(Math.round(value))
+const signedPercent = (value: number) => trend(Math.round(value))
+const severity = (value: number) => value.toFixed(2)
+
+function CountUp({ value, format }: { value: number; format: (value: number) => string }) {
+    return <>{format(useCountUp(value) ?? value)}</>
 }
 
 interface Props {
@@ -38,11 +57,15 @@ export default function Dashboard({ email, onSignOut, accountError }: Props) {
         error: string | null
     } | null>(null)
     const [selectedId, setSelectedId] = useState<number | null>(initialSelection)
+    const [hoveredId, setHoveredId] = useState<number | null>(null)
+    const [updatedAt, setUpdatedAt] = useState<number | null>(null)
 
     useEffect(() => {
         const controller = new AbortController()
         api.getLocationMap(query, controller.signal).then((data) => {
-            if (!controller.signal.aborted) setResult({ query, refresh, data, error: null })
+            if (controller.signal.aborted) return
+            setResult({ query, refresh, data, error: null })
+            setUpdatedAt(Date.now())
         }).catch((reason: unknown) => {
             if (!controller.signal.aborted) setResult({
                 query, refresh, data: null,
@@ -81,15 +104,18 @@ export default function Dashboard({ email, onSignOut, accountError }: Props) {
     const locations = data?.locations ?? EMPTY_LOCATIONS
     const summary = data?.summary
 
-    const stats = [
-        { label: "Reports today", value: summary?.reports_today, note: "Since midnight · Eastern time", icon: CalendarDays, tone: "" },
-        { label: query.days === "all" ? "All-time reports" : `Reports in ${query.days} days`, value: summary?.total_reports, note: "Dorm and off-campus reports in this area", icon: Activity, tone: "" },
+    // `text` is a fixed label; otherwise `number` counts up from its previous value.
+    const stats: { label: string; number?: number | null; format: (value: number) => string; text?: string; note: string; icon: typeof Gauge; tone: string }[] = [
+        { label: "Reports today", number: summary?.reports_today, format: whole, note: "Since midnight · Eastern time", icon: CalendarDays, tone: "" },
+        { label: query.days === "all" ? "All-time reports" : `Reports in ${query.days} days`, number: summary?.total_reports, format: whole, note: "Dorm and off-campus reports in this area", icon: Activity, tone: "" },
         {
-            label: "Change from prior period", value: query.days === "all" ? "N/A" : summary ? trend(summary.change_percent) : undefined,
+            label: "Change from prior period", format: signedPercent,
+            number: query.days === "all" || !summary ? undefined : summary.change_percent,
+            text: query.days === "all" ? "N/A" : summary && summary.change_percent === null ? trend(null) : undefined,
             note: query.days === "all" ? "No prior period for all time" : `Compared with the previous ${query.days} days`, icon: TrendingUp,
             tone: !summary?.change_percent ? "" : summary.change_percent > 0 ? "up" : "down",
         },
-        { label: "Average severity", value: summary?.average_severity?.toFixed(2), note: "Reported severity scores", icon: Gauge, tone: "" },
+        { label: "Average severity", number: summary?.average_severity, format: severity, note: "Reported severity scores", icon: Gauge, tone: "" },
     ]
 
     return (
@@ -119,12 +145,12 @@ export default function Dashboard({ email, onSignOut, accountError }: Props) {
                         </div>
                         <div className="dash-hero-actions">
                             <div className="dash-hero-buttons">
-                                <a className="dash-cta" href="#report">Report an illness <ArrowRight aria-hidden="true" /></a>
+                                <a className="dash-cta" href="#report" onClick={scrollToReport}>Report an illness <ArrowRight aria-hidden="true" /></a>
                                 <Button variant="ghost" className="dash-ghost" onClick={() => setRefresh((value) => value + 1)} disabled={loading}>
                                     <RefreshCw className={loading ? "animate-spin" : ""} aria-hidden="true" /> Refresh data
                                 </Button>
                             </div>
-                            <p className="dash-live"><span className="dash-live-dot" aria-hidden="true" /> Live · refreshes every 15 seconds</p>
+                            <LiveStatus updatedAt={updatedAt} loading={loading} failed={!!error} />
                         </div>
                     </div>
                 </header>
@@ -136,7 +162,11 @@ export default function Dashboard({ email, onSignOut, accountError }: Props) {
                             <span className="dash-stat-icon"><stat.icon aria-hidden="true" /></span>
                         </CardHeader>
                         <CardContent className="dash-stat-body">
-                            <p className="dash-stat-value" data-tone={stat.tone}>{stat.value ?? "—"}</p>
+                            <p className="dash-stat-value" data-tone={stat.tone}>
+                                {stat.text ?? (stat.number !== undefined && stat.number !== null
+                                    ? <CountUp value={stat.number} format={stat.format} />
+                                    : loading && !summary ? <span className="dash-skeleton" aria-hidden="true" /> : "—")}
+                            </p>
                             <p className="dash-stat-note">{stat.note}</p>
                         </CardContent>
                     </Card>)}
@@ -149,7 +179,7 @@ export default function Dashboard({ email, onSignOut, accountError }: Props) {
                 <div className="dash-grid">
                     <div className="dash-main">
                         <div className="dash-panel dash-map-card">
-                            <LocationMap query={query} locations={locations} homeAreas={data?.home_areas ?? EMPTY_HOME_AREAS} selectedId={selectedId} onSelect={selectLocation} />
+                            <LocationMap query={query} locations={locations} homeAreas={data?.home_areas ?? EMPTY_HOME_AREAS} selectedId={selectedId} hoveredId={hoveredId} onSelect={selectLocation} />
                             <div className="dash-map-foot">
                                 <p className="dash-map-count">{data ? `${locations.length} ${locations.length === 1 ? "dorm" : "dorms"} in this area` : loading ? "Loading map data…" : "Data unavailable"}</p>
                                 <ul className="dash-legend" aria-label="Map legend">
@@ -186,7 +216,7 @@ export default function Dashboard({ email, onSignOut, accountError }: Props) {
                     </aside>
                 </div>
 
-                <DormSection days={query.days} refresh={refresh} selectedId={selectedId} onSelect={selectLocation} />
+                <DormSection days={query.days} refresh={refresh} selectedId={selectedId} onSelect={selectLocation} onHover={setHoveredId} />
 
                 <footer className="dash-footer">
                     {!!data?.unmapped_locations && <p>{data.unmapped_locations} dorm(s) have no coordinates yet and are not shown on the map.</p>}

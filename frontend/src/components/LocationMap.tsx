@@ -9,14 +9,18 @@ interface Props {
     locations: MapLocation[]
     homeAreas: HomeArea[]
     selectedId: number | null
+    hoveredId?: number | null
     onSelect: (id: number) => void
 }
 
 type Runtime = Awaited<ReturnType<typeof loadGoogleMaps>> & { map: google.maps.Map }
+type Pin = { marker: google.maps.marker.AdvancedMarkerElement; pin: google.maps.marker.PinElement }
 
-export default function LocationMap({ query, locations, homeAreas, selectedId, onSelect }: Props) {
+export default function LocationMap({ query, locations, homeAreas, selectedId, hoveredId = null, onSelect }: Props) {
     const container = useRef<HTMLDivElement>(null)
     const initialCenter = useRef({ lat: query.latitude, lng: query.longitude })
+    const pins = useRef(new Map<number, Pin>())
+    const latestLocations = useRef(locations)
     const [runtime, setRuntime] = useState<Runtime | null>(null)
     const [error, setError] = useState<string | null>(null)
 
@@ -85,6 +89,7 @@ export default function LocationMap({ query, locations, homeAreas, selectedId, o
 
     useEffect(() => {
         if (!runtime) return
+        const registry = pins.current
         // A dorm only gets a pin once it has a report in the current period; it stays in the list either way.
         const markers = locations.filter((location) => location.stats.total_reports > 0).map((location) => {
             const selected = location.id === selectedId
@@ -95,20 +100,47 @@ export default function LocationMap({ query, locations, homeAreas, selectedId, o
                 zIndex: selected ? 1000 : 1,
                 gmpClickable: true,
             })
-            marker.append(new runtime.marker.PinElement({
+            const pin = new runtime.marker.PinElement({
                 background: selected ? "#ef620f" : "#801036",
                 borderColor: selected ? "#a64108" : "#5a0b26", glyphColor: "#ffffff",
                 glyphText: String(location.stats.total_reports), scale: selected ? 1.2 : 1,
-            }))
+            })
+            marker.append(pin)
+            registry.set(location.id, { marker, pin })
             const listener = () => onSelect(location.id)
             marker.addEventListener("gmp-click", listener)
             return { marker, listener }
         })
-        return () => markers.forEach(({ marker, listener }) => {
-            marker.removeEventListener("gmp-click", listener)
-            marker.map = null
-        })
+        return () => {
+            registry.clear()
+            markers.forEach(({ marker, listener }) => {
+                marker.removeEventListener("gmp-click", listener)
+                marker.map = null
+            })
+        }
     }, [runtime, locations, selectedId, onSelect])
+
+    // Hovering a dorm in the list lifts its pin. Runs after the pins are (re)built, so it survives refreshes.
+    useEffect(() => {
+        pins.current.forEach(({ marker, pin }, id) => {
+            const hovered = id === hoveredId
+            pin.scale = (id === selectedId ? 1.2 : 1) * (hovered ? 1.3 : 1)
+            marker.zIndex = hovered ? 2000 : id === selectedId ? 1000 : 1
+        })
+    }, [runtime, locations, selectedId, hoveredId])
+
+    useEffect(() => {
+        latestLocations.current = locations
+    }, [locations])
+
+    // Bring a newly selected dorm into view, but only when it is off screen.
+    useEffect(() => {
+        if (!runtime || selectedId === null) return
+        const target = latestLocations.current.find((location) => location.id === selectedId && location.stats.total_reports > 0)
+        if (!target) return
+        const position = { lat: target.latitude, lng: target.longitude }
+        if (!runtime.map.getBounds()?.contains(position)) runtime.map.panTo(position)
+    }, [runtime, selectedId])
 
     useEffect(() => {
         if (!runtime) return

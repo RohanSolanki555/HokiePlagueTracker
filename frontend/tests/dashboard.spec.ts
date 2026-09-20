@@ -234,3 +234,30 @@ test("a dorm, floor and illness are required before a report can be sent", async
     await expect(page.getByLabel("Illness", { exact: true })).toBeFocused()
     expect(submissions).toBe(0)
 })
+
+test("dorms can be sorted by report count or by name", async ({ page }) => {
+    await mockData(page)
+    const ashby = { ...dormList.dorms[1], id: 7, name: "Ashby Hall" } // No reports.
+    await page.route(/\/api\/dorms\?/, (route) => route.fulfill({ json: { ...dormList, dorms: [ashby, dormList.dorms[0]] } }))
+    await page.goto("/")
+    const names = () => page.locator("button[aria-pressed] .dash-dorm-name").allInnerTexts()
+    await expect.poll(names).toEqual(["Pritchard Hall", "Ashby Hall"])
+    await page.getByLabel("Sort dorms").selectOption("name")
+    await expect.poll(names).toEqual(["Ashby Hall", "Pritchard Hall"])
+})
+
+test("the live indicator shows how fresh the data is", async ({ page }) => {
+    await page.clock.install()
+    await mockData(page)
+    await page.goto("/")
+    await expect(page.getByText(/Live · updated (just now|\d+s ago)/)).toBeVisible()
+    await page.clock.fastForward(8000)
+    await expect(page.getByText(/Live · updated \d+s ago/)).toBeVisible()
+})
+
+test("the live indicator reports a lost connection", async ({ page }) => {
+    await mockData(page)
+    await page.route("**/api/locations/map?*", (route) => route.fulfill({ status: 503, json: { error: "Location data is unavailable. Please try again." } }))
+    await page.goto("/")
+    await expect(page.getByText("Connection lost · retrying")).toBeVisible()
+})

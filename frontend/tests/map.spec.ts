@@ -284,3 +284,26 @@ test("circle radius updates the map and API while staying centered on the Drillf
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     await page.screenshot({ path: test.info().outputPath("map-filters-mobile.png"), fullPage: true })
 })
+
+test("selecting a dorm brings its pin into view, and hovering the list lifts the pin", async ({ page }) => {
+    await mockGoogleMaps(page)
+    await mockData(page)
+    await page.goto("/")
+    await expect(markers(page)).toHaveCount(INITIAL_MARKERS)
+    const canvas = page.locator(".dash-map-canvas")
+    await expect(canvas).not.toHaveAttribute("data-panned", /.*/)
+
+    const scale = () => page.locator("test-pin", { hasText: "6" }).evaluate((pin) => (pin as HTMLElement & { scale: number }).scale)
+    await listRow(page, "Pritchard Hall").hover()
+    await expect.poll(scale).toBe(1.3)
+    await page.mouse.move(0, 0)
+    await expect.poll(scale).toBe(1)
+
+    await listRow(page, "Pritchard Hall").click()
+    const pritchard = JSON.stringify({ lat: 37.2284, lng: -80.4198 })
+    await expect(canvas).toHaveAttribute("data-panned", pritchard)
+    // Slusher Hall has no reports and so no pin: selecting it must not pan anywhere.
+    await listRow(page, "Slusher Hall").click()
+    await expect(listRow(page, "Slusher Hall")).toHaveAttribute("aria-pressed", "true")
+    await expect(canvas).toHaveAttribute("data-panned", pritchard)
+})
