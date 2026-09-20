@@ -1,21 +1,32 @@
 import { supabase } from "./auth"
 
+
 const API_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:5000/api"
+    import.meta.env.VITE_API_URL ||
+    (import.meta.env.DEV
+        ? "http://localhost:5000/api"
+        : "/api")
 
 
 async function request<T>(
     endpoint: string,
     options?: RequestInit
 ): Promise<T> {
-    const session = supabase ? (await supabase.auth.getSession()).data.session : null
+    const session = supabase
+        ? (await supabase.auth.getSession()).data.session
+        : null
+
     const response = await fetch(
         `${API_URL}${endpoint}`,
         {
             ...options,
             headers: {
                 "Content-Type": "application/json",
-                ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+                ...(session
+                    ? {
+                        Authorization: `Bearer ${session.access_token}`,
+                    }
+                    : {}),
                 ...options?.headers,
             },
         }
@@ -23,7 +34,11 @@ async function request<T>(
 
     if (!response.ok) {
         const body = await response.json().catch(() => null)
-        throw new Error(body?.error ?? `API request failed: ${response.status}`)
+
+        throw new Error(
+            body?.error ??
+            `API request failed: ${response.status}`
+        )
     }
 
     return response.json()
