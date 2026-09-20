@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test"
-import type { DormDetail, DormListResponse, LocationMapResponse, ReportPeriod } from "../src/services/api"
+import type { DormDetail, DormListResponse, IllnessSummaryResponse, LocationMapResponse, ReportPeriod } from "../src/services/api"
 import { mockSignedIn } from "./auth-helper"
 
 const busy = { total_reports: 6, reports_today: 2, previous_period_reports: 3, change_percent: 100, average_severity: 2.5, latest_report_at: "2026-09-19T11:00:00Z" }
@@ -24,8 +24,9 @@ export const dormList: DormListResponse = {
     ],
 }
 
-export const illnessSummary = {
+export const illnessSummary: IllnessSummaryResponse = {
     days: 7, generated_at: "2026-09-19T12:00:00Z", total_reports: 10,
+    stats: { ...busy, total_reports: 10, reports_today: 4, previous_period_reports: 8, change_percent: 25, average_severity: 3.2 },
     illnesses: [
         { illness: "Common cold", reports: 4 },
         { illness: "Flu A", reports: 3 },

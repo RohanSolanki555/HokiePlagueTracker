@@ -7,6 +7,8 @@ const floorSelect = (page: Page) => page.getByLabel("Floor", { exact: true })
 const submit = (page: Page) => page.getByRole("button", { name: "Submit report", exact: true })
 const citySummary = (page: Page) => page.getByRole("region", { name: "Illness reports in Blacksburg" })
 const illnessRow = (page: Page, illness: string) => citySummary(page).getByRole("listitem").filter({ has: page.getByText(illness, { exact: true }) })
+const cardValues = (page: Page) => page.locator(".dash-stats .dash-stat-value")
+const cityTotal = (page: Page) => citySummary(page).locator(".dash-illnesses-total strong")
 
 async function fillDormReport(page: Page) {
     await dormSelect(page).selectOption({ label: "Pritchard Hall" })
@@ -22,6 +24,9 @@ test("the city illness summary shows distinct flu types, counts and shares betwe
     await page.goto("/")
     expect(Object.fromEntries(new URL((await request).url()).searchParams)).toEqual({ days: "7" })
     await expect(citySummary(page)).toBeVisible()
+    // Map totals are deliberately smaller: every top card must use the same city data as the summary.
+    await expect(cardValues(page)).toHaveText(["4", "10", "+25%", "3.20"])
+    await expect(cityTotal(page)).toHaveText("10")
     await expect(illnessRow(page, "Common cold")).toContainText("4 reports")
     await expect(illnessRow(page, "Common cold")).toContainText("40%")
     await expect(illnessRow(page, "Flu A")).toContainText("3 reports")
@@ -48,21 +53,29 @@ test("city illness totals follow the report period and stay independent of the m
         queries.push(Object.fromEntries(params))
         if (params.get("days") === "14") await pendingPeriod
         return route.fulfill({ json: params.get("days") === "14"
-            ? { ...illnessSummary, days: 14, total_reports: 2, illnesses: [{ illness: "Flu B", reports: 2 }] }
+            ? { ...illnessSummary, days: 14, total_reports: 2,
+                stats: { ...illnessSummary.stats, total_reports: 2, reports_today: 1, previous_period_reports: 4, change_percent: -50, average_severity: 4 },
+                illnesses: [{ illness: "Flu B", reports: 2 }] }
             : illnessSummary })
     })
     await page.goto("/")
     await expect(illnessRow(page, "Common cold")).toBeVisible()
+    await expect(cardValues(page)).toHaveText(["4", "10", "+25%", "3.20"])
     await page.getByLabel("Report period").selectOption("14")
     try {
         await expect(citySummary(page)).toHaveAttribute("aria-busy", "true")
+        await expect(page.locator(".dash-stats")).toHaveAttribute("aria-busy", "true")
+        await expect(page.locator(".dash-stats .dash-skeleton")).toHaveCount(4)
         await expect(illnessRow(page, "Common cold")).toHaveCount(0)
     } finally {
         releasePeriod()
     }
     await expect(illnessRow(page, "Flu B")).toContainText("100%")
     await expect(citySummary(page).getByRole("listitem")).toHaveCount(1)
+    await expect(cardValues(page)).toHaveText(["1", "2", "-50%", "4.00"])
+    await expect(cityTotal(page)).toHaveText("2")
     expect(queries.at(-1)).toEqual({ days: "14" })
+    expect(queries.filter((query) => query.days === "14")).toHaveLength(1)
     const summaryRequests = queries.length
 
     const changedMap = page.waitForResponse((response) => {
@@ -73,6 +86,8 @@ test("city illness totals follow the report period and stay independent of the m
     await changedMap
     await expect(page.getByText("2 dorms in this area")).toBeVisible()
     await expect(illnessRow(page, "Flu B")).toContainText("100%")
+    await expect(cardValues(page)).toHaveText(["1", "2", "-50%", "4.00"])
+    await expect(cityTotal(page)).toHaveText("2")
     expect(queries).toHaveLength(summaryRequests)
 })
 
@@ -81,20 +96,29 @@ test("city summary failures can retry into an empty state and refresh with new r
     let state: "error" | "empty" | "reports" = "error"
     await page.route("**/api/stats/illnesses?*", (route) => route.fulfill(state === "error"
         ? { status: 503, json: { error: "Illness data is unavailable. Please try again." } }
-        : { json: state === "empty" ? { ...illnessSummary, total_reports: 0, illnesses: [] } : illnessSummary }))
+        : { json: state === "empty" ? {
+            ...illnessSummary, total_reports: 0,
+            stats: { total_reports: 0, reports_today: 0, previous_period_reports: 0, change_percent: 0, average_severity: null, latest_report_at: null },
+            illnesses: [],
+        } : illnessSummary }))
     await page.goto("/")
     await expect(citySummary(page).getByRole("alert")).toContainText("Illness data is unavailable")
     await expect(citySummary(page).getByText("No illness reports for this period.")).toHaveCount(0)
     await expect(page.getByText("2 dorms in this area")).toBeVisible()
+    await expect(cardValues(page)).toHaveText(["—", "—", "—", "—"])
 
     state = "empty"
     await citySummary(page).getByRole("button", { name: "Retry illness summary" }).click()
     await expect(citySummary(page).getByText("No illness reports for this period.")).toBeVisible()
     await expect(citySummary(page).getByRole("alert")).toHaveCount(0)
+    await expect(cardValues(page)).toHaveText(["0", "0", "0%", "—"])
+    await expect(cityTotal(page)).toHaveText("0")
     state = "reports"
     await page.getByRole("button", { name: "Refresh data" }).click()
     await expect(illnessRow(page, "Flu A")).toBeVisible()
     await expect(citySummary(page).getByText("No illness reports for this period.")).toHaveCount(0)
+    await expect(cardValues(page)).toHaveText(["4", "10", "+25%", "3.20"])
+    await expect(cityTotal(page)).toHaveText("10")
 })
 
 test("dorm list and statistics work without a Google key", async ({ page }) => {
@@ -145,6 +169,8 @@ test("failed requests show an error and can recover", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByRole("alert")).toContainText("Location data is unavailable")
     await expect(page.getByText("Data unavailable", { exact: true })).toBeVisible()
+    await expect(cardValues(page)).toHaveText(["4", "10", "+25%", "3.20"])
+    await expect(cityTotal(page)).toHaveText("10")
     failed = false
     await page.getByRole("button", { name: "Try again" }).click()
     await expect(page.getByRole("alert")).toHaveCount(0)
@@ -193,6 +219,7 @@ test("a dorm report is sent with the dorm and floor, selects the dorm, and updat
     let total = 6
     await page.route("**/api/stats/illnesses?*", (route) => route.fulfill({ json: {
         ...illnessSummary, total_reports: total + 4,
+        stats: { ...illnessSummary.stats, total_reports: total + 4, reports_today: total - 2 },
         illnesses: illnessSummary.illnesses.map((row) => row.illness === "Flu A" ? { ...row, reports: total - 3 } : row),
     } }))
     await page.route(/\/api\/dorms\?/, (route) => route.fulfill({ json: {
@@ -209,12 +236,15 @@ test("a dorm report is sent with the dorm and floor, selects the dorm, and updat
     await page.goto("/")
     await expect(pritchard(page)).toContainText("6 reports")
     await expect(illnessRow(page, "Flu A")).toContainText("30%")
+    await expect(cardValues(page)).toHaveText(["4", "10", "+25%", "3.20"])
     await fillDormReport(page)
     await submit(page).click()
     await expect(page.getByRole("status").filter({ hasText: "Your report was saved for Pritchard Hall." })).toBeVisible()
     await expect(pritchard(page)).toContainText("7 reports")
     await expect(illnessRow(page, "Flu A")).toContainText("4 reports")
     await expect(illnessRow(page, "Flu A")).toContainText("36.4%")
+    await expect(cardValues(page)).toHaveText(["5", "11", "+25%", "3.20"])
+    await expect(cityTotal(page)).toHaveText("11")
     await expect(pritchard(page)).toHaveAttribute("aria-pressed", "true")
     await expect(page.getByLabel("Illness", { exact: true })).toHaveValue("")
     await expect(dormSelect(page)).toHaveValue("42")

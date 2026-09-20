@@ -13,7 +13,7 @@ NOW = datetime(2026, 9, 19, 16, tzinfo=timezone.utc)
 
 
 def report(id, age, illness="Flu A", **fields):
-    return {"id": id, "illness": illness, "created_at": (NOW - age).isoformat(), **fields}
+    return {"id": id, "illness": illness, "severity": 3, "created_at": (NOW - age).isoformat(), **fields}
 
 
 @contextmanager
@@ -25,7 +25,7 @@ def database(rows, fail_offset=None):
         assert request.url.path.endswith("/reports")
         params = request.url.params
         assert set(params) <= {"select", "created_at", "order", "offset", "limit"}
-        assert params["select"] == "illness,created_at"
+        assert params["select"] == "illness,created_at,severity"
         assert params["order"] == "id.asc"
         assert len(params.get_list("offset")) == 1
         offset = int(params["offset"])
@@ -43,7 +43,7 @@ def database(rows, fail_offset=None):
             else:
                 pytest.fail(f"Unexpected date comparison: {comparison}")
         return httpx.Response(200, json=[
-            {column: row.get(column) for column in ("illness", "created_at")}
+            {column: row.get(column) for column in ("illness", "created_at", "severity")}
             for row in matches[offset:offset + 2]
         ])
 
@@ -67,6 +67,14 @@ def test_summary_paginates_all_residences_and_legacy_reports_without_private_fie
         "days": 7,
         "generated_at": NOW.isoformat(),
         "total_reports": 5,
+        "stats": {
+            "total_reports": 5,
+            "reports_today": 5,
+            "previous_period_reports": 0,
+            "change_percent": None,
+            "average_severity": 3.0,
+            "latest_report_at": (NOW - timedelta(hours=1)).isoformat(),
+        },
         "illnesses": [
             {"illness": "Common cold", "reports": 2},
             {"illness": "Flu A", "reports": 2},
@@ -85,6 +93,45 @@ def test_selected_period_counts_both_inclusive_boundaries_and_excludes_future(da
     assert summary["days"] == ("all" if days is None else days)
     assert summary["total_reports"] == count
     assert summary["illnesses"] == [{"illness": "Flu A", "reports": count}]
+    assert summary["stats"]["total_reports"] == count
+    assert summary["stats"]["reports_today"] == 1
+    if days is None:
+        assert summary["stats"]["previous_period_reports"] == 0
+        assert summary["stats"]["change_percent"] is None
+
+
+def test_stats_and_illnesses_share_current_reports_with_previous_period_comparison():
+    rows = [
+        report(1, timedelta(0), "Flu A", severity=5),
+        # Exactly midnight in Blacksburg and just before midnight.
+        report(2, timedelta(hours=12), "Flu B", severity=1),
+        report(3, timedelta(hours=12, microseconds=1), "Flu A", severity=3),
+        report(4, timedelta(days=7), "COVID-19", severity=3),
+        report(5, timedelta(days=7, microseconds=1), "RSV", severity=5),
+        report(6, timedelta(days=14), "RSV", severity=5),
+        report(7, timedelta(days=14, microseconds=1), "RSV", severity=5),
+        report(8, timedelta(microseconds=-1), "RSV", severity=5),
+    ]
+    with database(rows) as (client, offsets):
+        summary = get_illness_summary(client, 7, NOW)
+    # Only the current and previous windows are queried, including every page.
+    assert offsets == [0, 2, 4, 6]
+    assert summary["stats"] == {
+        "total_reports": 4,
+        "reports_today": 2,
+        "previous_period_reports": 2,
+        "change_percent": 100.0,
+        "average_severity": 3.0,
+        "latest_report_at": NOW.isoformat(),
+    }
+    assert summary["illnesses"] == [
+        {"illness": "Flu A", "reports": 2},
+        {"illness": "COVID-19", "reports": 1},
+        {"illness": "Flu B", "reports": 1},
+    ]
+    assert summary["total_reports"] == summary["stats"]["total_reports"] == sum(
+        illness["reports"] for illness in summary["illnesses"]
+    )
 
 
 def test_period_excludes_report_just_before_start():
@@ -122,6 +169,14 @@ def test_endpoint_returns_an_empty_summary_for_valid_periods(client, monkeypatch
     assert response.json["days"] == expected
     assert response.json["total_reports"] == 0
     assert response.json["illnesses"] == []
+    assert response.json["stats"] == {
+        "total_reports": 0,
+        "reports_today": 0,
+        "previous_period_reports": 0,
+        "change_percent": None if expected == "all" else 0,
+        "average_severity": None,
+        "latest_report_at": None,
+    }
     assert datetime.fromisoformat(response.json["generated_at"]).tzinfo is not None
 
 

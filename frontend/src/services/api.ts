@@ -117,6 +117,7 @@ export interface IllnessSummaryResponse {
     days: ReportPeriod
     generated_at: string
     total_reports: number
+    stats: LocationStatistics
     illnesses: { illness: string; reports: number }[]
 }
 

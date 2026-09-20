@@ -10,7 +10,7 @@ import ReportForm, { type SubmittedReport } from "@/components/ReportForm"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useCountUp } from "@/lib/use-count-up"
-import { api, type LocationMapResponse, type MapQuery } from "@/services/api"
+import { api, type IllnessSummaryResponse, type LocationMapResponse, type MapQuery, type ReportPeriod } from "@/services/api"
 
 const CAMPUS: MapQuery = { latitude: 37.2274294, longitude: -80.4222303, radius_km: 3, days: 7 }
 const EMPTY_LOCATIONS: LocationMapResponse["locations"] = []
@@ -51,6 +51,14 @@ interface Props {
 export default function Dashboard({ email, onSignOut, accountError }: Props) {
     const [query, setQuery] = useState(CAMPUS)
     const [refresh, setRefresh] = useState(0)
+    const [summaryRetry, setSummaryRetry] = useState(0)
+    const [illnessResult, setIllnessResult] = useState<{
+        days: ReportPeriod
+        refresh: number
+        retry: number
+        data: IllnessSummaryResponse | null
+        error: string | null
+    } | null>(null)
     const [result, setResult] = useState<{
         query: MapQuery
         refresh: number
@@ -66,7 +74,6 @@ export default function Dashboard({ email, onSignOut, accountError }: Props) {
         api.getLocationMap(query, controller.signal).then((data) => {
             if (controller.signal.aborted) return
             setResult({ query, refresh, data, error: null })
-            setUpdatedAt(Date.now())
         }).catch((reason: unknown) => {
             if (!controller.signal.aborted) setResult({
                 query, refresh, data: null,
@@ -75,6 +82,22 @@ export default function Dashboard({ email, onSignOut, accountError }: Props) {
         })
         return () => controller.abort()
     }, [query, refresh])
+
+    const days = query.days
+    useEffect(() => {
+        const controller = new AbortController()
+        api.getIllnessSummary(days, controller.signal).then((data) => {
+            if (controller.signal.aborted) return
+            setIllnessResult({ days, refresh, retry: summaryRetry, data, error: null })
+            setUpdatedAt(Date.now())
+        }).catch((reason: unknown) => {
+            if (!controller.signal.aborted) setIllnessResult({
+                days, refresh, retry: summaryRetry, data: null,
+                error: reason instanceof Error ? reason.message : "Illness reports could not load.",
+            })
+        })
+        return () => controller.abort()
+    }, [days, refresh, summaryRetry])
 
     useEffect(() => {
         const refreshVisible = () => {
@@ -98,17 +121,22 @@ export default function Dashboard({ email, onSignOut, accountError }: Props) {
         setRefresh((value) => value + 1)
     }, [])
 
-    const loading = result?.query !== query || result?.refresh !== refresh
+    const mapLoading = result?.query !== query || result?.refresh !== refresh
     // Keep the last counts visible during refreshes of the same area.
     const data = result?.query === query ? result.data : null
-    const error = loading ? null : result?.error
+    const error = mapLoading ? null : result?.error
     const locations = data?.locations ?? EMPTY_LOCATIONS
-    const summary = data?.summary
+    // Both summaries share one response so their totals always use the same reports.
+    const illnessData = illnessResult?.days === days ? illnessResult.data : null
+    const summaryLoading = illnessResult?.days !== days || illnessResult?.refresh !== refresh || illnessResult?.retry !== summaryRetry
+    const summaryError = summaryLoading ? null : illnessResult?.error ?? null
+    const summary = illnessData?.stats
+    const loading = mapLoading || summaryLoading
 
     // `text` is a fixed label; otherwise `number` counts up from its previous value.
     const stats: { label: string; number?: number | null; format: (value: number) => string; text?: string; note: string; icon: typeof Gauge; tone: string }[] = [
         { label: "Reports today", number: summary?.reports_today, format: whole, note: "Since midnight · Eastern time", icon: CalendarDays, tone: "" },
-        { label: query.days === "all" ? "All-time reports" : `Reports in ${query.days} days`, number: summary?.total_reports, format: whole, note: "Dorm and off-campus reports in this area", icon: Activity, tone: "" },
+        { label: query.days === "all" ? "All-time reports" : `Reports in ${query.days} days`, text: illnessData?.total_reports.toLocaleString(), format: whole, note: "All reports across the tracker", icon: Activity, tone: "" },
         {
             label: "Change from prior period", format: signedPercent,
             number: query.days === "all" || !summary ? undefined : summary.change_percent,
@@ -151,12 +179,12 @@ export default function Dashboard({ email, onSignOut, accountError }: Props) {
                                     <RefreshCw className={loading ? "animate-spin" : ""} aria-hidden="true" /> Refresh data
                                 </Button>
                             </div>
-                            <LiveStatus updatedAt={updatedAt} loading={loading} failed={!!error} />
+                            <LiveStatus updatedAt={updatedAt} loading={loading} failed={!!error || !!summaryError} />
                         </div>
                     </div>
                 </header>
 
-                <div className="dash-stats" aria-busy={loading}>
+                <div className="dash-stats" aria-busy={summaryLoading}>
                     {stats.map((stat) => <Card key={stat.label} className="dash-stat">
                         <CardHeader className="dash-stat-head">
                             <CardTitle className="dash-stat-label">{stat.label}</CardTitle>
@@ -166,14 +194,14 @@ export default function Dashboard({ email, onSignOut, accountError }: Props) {
                             <p className="dash-stat-value" data-tone={stat.tone}>
                                 {stat.text ?? (stat.number !== undefined && stat.number !== null
                                     ? <CountUp value={stat.number} format={stat.format} />
-                                    : loading && !summary ? <span className="dash-skeleton" aria-hidden="true" /> : "—")}
+                                    : summaryLoading && !summary ? <span className="dash-skeleton" aria-hidden="true" /> : "—")}
                             </p>
                             <p className="dash-stat-note">{stat.note}</p>
                         </CardContent>
                     </Card>)}
                 </div>
 
-                <IllnessSummary days={query.days} refresh={refresh} />
+                <IllnessSummary days={days} data={illnessData} loading={summaryLoading} error={summaryError} onRetry={() => setSummaryRetry((value) => value + 1)} />
 
                 {error && <div role="alert" className="dash-feedback dash-feedback-action">
                     <span>{error}</span><Button variant="outline" className="dash-btn-outline" onClick={() => setRefresh((value) => value + 1)}>Try again</Button>
@@ -184,7 +212,7 @@ export default function Dashboard({ email, onSignOut, accountError }: Props) {
                         <div className="dash-panel dash-map-card">
                             <LocationMap query={query} locations={locations} homeAreas={data?.home_areas ?? EMPTY_HOME_AREAS} selectedId={selectedId} hoveredId={hoveredId} onSelect={selectLocation} />
                             <div className="dash-map-foot">
-                                <p className="dash-map-count">{data ? `${locations.length} ${locations.length === 1 ? "dorm" : "dorms"} in this area` : loading ? "Loading map data…" : "Data unavailable"}</p>
+                                <p className="dash-map-count">{data ? `${locations.length} ${locations.length === 1 ? "dorm" : "dorms"} in this area` : mapLoading ? "Loading map data…" : "Data unavailable"}</p>
                                 <ul className="dash-legend" aria-label="Map legend">
                                     <li><span className="dash-dot dash-dot-dorm" aria-hidden="true" />Dorm with reports</li>
                                     <li><span className="dash-dot dash-dot-home" aria-hidden="true" />Off-campus area</li>

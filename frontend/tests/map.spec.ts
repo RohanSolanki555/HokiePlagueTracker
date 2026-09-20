@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test"
-import { dormList, mapData, mockData, mockGoogleMaps } from "./fixtures"
+import { dormList, illnessSummary, mapData, mockData, mockGoogleMaps } from "./fixtures"
 
 const listRow = (page: Page, name: string) => page.locator("button[aria-pressed]", { hasText: name })
 const homeMarkers = (page: Page) => page.locator('test-marker[aria-hidden="true"]')
@@ -87,6 +87,9 @@ test("a dorm report increments its pin, the totals, and its statistics", async (
     await mockData(page)
     let total = 6
     const stats = () => ({ ...mapData.summary, total_reports: total, reports_today: total - 4 })
+    await page.route("**/api/stats/illnesses?*", (route) => route.fulfill({ json: {
+        ...illnessSummary, total_reports: total, stats: stats(), illnesses: [{ illness: "Common cold", reports: total }],
+    } }))
     await page.route("**/api/locations/map?*", (route) => route.fulfill({ json: {
         ...mapData, summary: stats(),
         locations: [{ ...mapData.locations[0], stats: stats() }, mapData.locations[1]],
@@ -186,6 +189,9 @@ test("reports from other users refresh on focus and every fifteen seconds", asyn
     await mockData(page)
     let count = 6
     const stats = () => ({ ...mapData.summary, total_reports: count, reports_today: count - 4 })
+    await page.route("**/api/stats/illnesses?*", (route) => route.fulfill({ json: {
+        ...illnessSummary, total_reports: count, stats: stats(), illnesses: [{ illness: "Common cold", reports: count }],
+    } }))
     await page.route("**/api/locations/map?*", (route) => route.fulfill({ json: {
         ...mapData, summary: stats(),
         locations: [{ ...mapData.locations[0], stats: stats() }, mapData.locations[1]],
@@ -208,6 +214,7 @@ test("reports from other users refresh on focus and every fifteen seconds", asyn
     await expect(page.getByRole("button", { name: "Pritchard Hall: 7 reports", exact: true }).locator("test-pin")).toHaveText("7")
     await expect(listRow(page, "Pritchard Hall")).toContainText("7 reports")
     await expect(totalCard.getByText("7", { exact: true })).toBeVisible()
+    await expect(page.locator(".dash-illnesses-total strong")).toHaveText("7")
     await expect(listRow(page, "Pritchard Hall")).toHaveAttribute("aria-pressed", "true")
 
     count = 8
@@ -216,6 +223,8 @@ test("reports from other users refresh on focus and every fifteen seconds", asyn
     await pollingRequest
     await expect(page.getByRole("button", { name: "Pritchard Hall: 8 reports", exact: true }).locator("test-pin")).toHaveText("8")
     await expect(listRow(page, "Pritchard Hall")).toContainText("8 reports")
+    await expect(totalCard.getByText("8", { exact: true })).toBeVisible()
+    await expect(page.locator(".dash-illnesses-total strong")).toHaveText("8")
     await expect(markers(page)).toHaveCount(INITIAL_MARKERS)
 })
 
